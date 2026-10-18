@@ -1,0 +1,4 @@
+# Runtime dependency manifest for VisionRTToolSDK
+dependencies:
+  - name: opencv
+    default: D:/Software/opencv/build/x64/vc16
