@@ -22,6 +22,21 @@ bool cppKind(ToolKind kind) {
     return kind == ToolKind::CppFunction || kind == ToolKind::CppClass;
 }
 
+bool underRoot(const std::filesystem::path& root, const std::filesystem::path& path) {
+    auto rootPart = root.begin();
+    auto pathPart = path.begin();
+    for (; rootPart != root.end(); ++rootPart, ++pathPart) {
+        if (pathPart == path.end() || *pathPart != *rootPart) return false;
+    }
+    return true;
+}
+
+// Declarations under assets/tools/builtin are shipped platform tools; the rest of the package is custom tooling.
+bool builtinDeclaration(const std::filesystem::path& relativePath) {
+    static const std::filesystem::path builtinRoot = std::filesystem::path(u8"assets/tools/builtin");
+    return underRoot(builtinRoot, relativePath.lexically_normal());
+}
+
 } // namespace
 
 ToolsPackage readToolsPackage(const std::filesystem::path& packageRoot) {
@@ -55,7 +70,7 @@ ToolsPackage readToolsPackage(const std::filesystem::path& packageRoot) {
         if (!std::filesystem::is_regular_file(definitionPath, error) || error) {
             throw ContractError("Tool '" + registryName + "' definition file does not exist: " + pathText(definitionPath));
         }
-        tool.definition = parseToolDefinitionFile(definitionPath);
+        tool.definition = parseToolDefinitionFile(definitionPath, builtinDeclaration(utf8Path(toolEntry.definition)));
         if (tool.definition.registryName != registryName) {
             throw ContractError("Tool '" + registryName + "' definition registry_name '" + tool.definition.registryName +
                                 "' does not match index tool key");

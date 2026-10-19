@@ -49,6 +49,21 @@ outputs:
     type: Int
 )";
 
+const char* kToolGamma = R"(schema_version: 1
+tool_id: test.pkg.gamma
+display_name: 自定义工具
+version: 1.0.0
+kind: cpp_function
+entry:
+  registry_name: test.pkg.gamma.registry
+init_params: []
+inputs: []
+outputs:
+  - id: value
+    name: 值
+    type: Float
+)";
+
 const char* kValidIndex = R"(variant: cpu
 modules:
   mod_a:
@@ -60,12 +75,16 @@ tools:
   test.pkg.alpha:
     module: mod_a
     definition: assets/tools/builtin/类别/组一/alpha.yaml
+  test.pkg.gamma.registry:
+    module: mod_a
+    definition: assets/tools/custom/Python/示例/gamma.yaml
 runtime_files:
   - bin/runtime_dep.dat
 )";
 
 const auto kAlphaPath = std::filesystem::path(u8"assets/tools/builtin/类别/组一/alpha.yaml");
 const auto kBravoPath = std::filesystem::path(u8"assets/tools/builtin/类别/组二/bravo.yaml");
+const auto kGammaPath = std::filesystem::path(u8"assets/tools/custom/Python/示例/gamma.yaml");
 
 void writeFile(const std::filesystem::path& path, const std::string& content) {
     std::filesystem::create_directories(path.parent_path());
@@ -85,6 +104,7 @@ std::filesystem::path makeRoot(const std::filesystem::path& base, const std::fil
     writeFile(root / "bin" / "runtime_dep.dat", "dummy runtime");
     writeFile(root / kAlphaPath, kToolAlpha);
     writeFile(root / kBravoPath, kToolBravo);
+    writeFile(root / kGammaPath, kToolGamma);
     writeFile(root / "module_index.yaml", kValidIndex);
     return root;
 }
@@ -107,15 +127,17 @@ void readValidPackage(const std::filesystem::path& root) {
     const auto package = readToolsPackage(root);
     assert(package.root == std::filesystem::absolute(root).lexically_normal());
     assert(package.index.variant == "cpu");
-    assert(package.index.tools.size() == 2);
+    assert(package.index.tools.size() == 3);
     assert(package.index.modules.size() == 1);
-    assert(package.tools.size() == 2);
+    assert(package.tools.size() == 3);
 
     // Document order of the index is not trusted; tools are deterministic by declaration path.
     assert(package.tools[0].toolId == "test.pkg.alpha");
     assert(package.tools[1].toolId == "test.pkg.bravo");
+    assert(package.tools[2].toolId == "test.pkg.gamma");
     assert(package.tools[0].registryName == "test.pkg.alpha");
     assert(package.tools[1].registryName == "test.pkg.bravo.registry");
+    assert(package.tools[2].registryName == "test.pkg.gamma.registry");
     assert(package.tools[0].definition.displayName == "包内工具甲");
     assert(package.tools[0].definition.version == "1.2.0");
     assert(package.tools[0].moduleLibrary == package.root / "bin" / "mod_a.dll");
@@ -123,6 +145,12 @@ void readValidPackage(const std::filesystem::path& root) {
     assert(package.tools[0].definition.definitionPath ==
            package.root / std::filesystem::path(u8"assets/tools/builtin/类别/组一/alpha.yaml"));
     assert(package.tools[1].definition.kind == ToolKind::CppClass);
+
+    // Declarations under assets/tools/builtin ship as platform tools, everything else as custom tooling.
+    assert(package.tools[0].definition.builtin);
+    assert(package.tools[1].definition.builtin);
+    assert(!package.tools[2].definition.builtin);
+    assert(package.tools[2].definition.definitionPath == package.root / kGammaPath);
 
     // Validation entry delegates to the same reading semantics.
     validateToolsPackage(root);

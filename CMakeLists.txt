@@ -89,6 +89,34 @@ if(MSVC)
     target_compile_options(visionrt_validate_tool PRIVATE /utf-8)
 endif()
 
+option(VISIONRT_BUILD_PYTHON_INTEROP "Build optional VisionRT::PythonInterop library" OFF)
+if(VISIONRT_BUILD_PYTHON_INTEROP)
+    if(NOT TARGET pybind11::pybind11)
+        find_package(pybind11 QUIET CONFIG)
+        if(NOT pybind11_FOUND)
+            find_package(Python3 COMPONENTS Interpreter Development.Embed)
+        endif()
+    endif()
+    if(TARGET pybind11::pybind11 OR TARGET pybind11::headers)
+        add_library(VisionRTPythonInterop STATIC
+            src/PythonInterop.cpp
+        )
+        add_library(VisionRT::PythonInterop ALIAS VisionRTPythonInterop)
+        set_target_properties(VisionRTPythonInterop PROPERTIES EXPORT_NAME PythonInterop)
+
+        target_compile_features(VisionRTPythonInterop PUBLIC cxx_std_20)
+        target_include_directories(VisionRTPythonInterop
+            PUBLIC
+                $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+                $<INSTALL_INTERFACE:include>
+        )
+        target_link_libraries(VisionRTPythonInterop PUBLIC VisionRTToolSDK pybind11::pybind11)
+        if(MSVC)
+            target_compile_options(VisionRTPythonInterop PUBLIC /utf-8)
+        endif()
+    endif()
+endif()
+
 set(VISIONRT_TOOL_SDK_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include" CACHE PATH "VisionRT Tool SDK include directory")
 if(NOT PROJECT_IS_TOP_LEVEL)
     set(VISIONRT_TOOL_SDK_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include" PARENT_SCOPE)
@@ -98,7 +126,12 @@ if(PROJECT_IS_TOP_LEVEL)
     include(GNUInstallDirs)
     include(CMakePackageConfigHelpers)
 
-    install(TARGETS VisionRTToolSDK visionrt_validate_tool
+    set(_sdk_install_targets VisionRTToolSDK visionrt_validate_tool)
+    if(TARGET VisionRTPythonInterop)
+        list(APPEND _sdk_install_targets VisionRTPythonInterop)
+    endif()
+
+    install(TARGETS ${_sdk_install_targets}
         EXPORT VisionRTToolSDKTargets
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
