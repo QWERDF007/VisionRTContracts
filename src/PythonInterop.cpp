@@ -75,12 +75,8 @@ py::array readonlyArray(py::dtype dtype, const std::vector<py::ssize_t>& shape,
     auto capsule = ownerCapsule(std::move(owner), pointer, bytes);
     fprintf(stderr, "[DEBUG-SDK] creating py::array\n"); fflush(stderr);
     py::array array(dtype, shape, strides, pointer, capsule);
-    fprintf(stderr, "[DEBUG-SDK] py::array created, ptr=%p, err=%p\n", (void*)array.ptr(), (void*)PyErr_Occurred()); fflush(stderr);
-    fprintf(stderr, "[DEBUG-SDK] getting setflags attr\n"); fflush(stderr);
-    auto setflags = array.attr("setflags");
-    fprintf(stderr, "[DEBUG-SDK] setflags ptr=%p\n", (void*)setflags.ptr()); fflush(stderr);
-    fprintf(stderr, "[DEBUG-SDK] calling setflags\n"); fflush(stderr);
-    setflags(py::arg("write") = false);
+    fprintf(stderr, "[DEBUG-SDK] setting writeable false directly on flags\n"); fflush(stderr);
+    array.attr("flags").attr("writeable") = false;
     fprintf(stderr, "[DEBUG-SDK] readonlyArray exit\n"); fflush(stderr);
     return array;
 }
