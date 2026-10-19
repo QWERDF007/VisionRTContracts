@@ -188,7 +188,7 @@ void systemOutputs(ToolDefinition& definition) {
 
 ToolDefinition parseDefinitionNode(const YAML::Node& node, const std::filesystem::path& path, bool builtin) {
     try {
-        fields(node, {"schema_version", "tool_id", "display_name", "version", "kind", "entry", "init_params", "inputs", "outputs"}, "Tool definition");
+        fields(node, {"schema_version", "tool_id", "display_name", "version", "kind", "entry", "init_params", "inputs", "outputs", "category", "subcategory", "resources"}, "Tool definition");
         if (parseInt64(text(node["schema_version"], "schema_version")) != 1) throw ContractError("Unsupported schema_version");
         ToolDefinition definition;
         definition.id = text(node["tool_id"], "tool_id", true);
@@ -197,8 +197,22 @@ ToolDefinition parseDefinitionNode(const YAML::Node& node, const std::filesystem
         definition.builtin = builtin;
         if (!path.empty()) {
             definition.definitionPath = path.lexically_normal();
-            definition.subcategory = pathText(path.parent_path().filename());
-            definition.category = pathText(path.parent_path().parent_path().filename());
+        }
+        if (node["category"]) definition.category = text(node["category"], "category");
+        if (node["subcategory"]) definition.subcategory = text(node["subcategory"], "subcategory");
+        if (const auto resources = node["resources"]) {
+            if (!resources.IsSequence()) throw ContractError("resources must be a sequence");
+            for (const auto& resource : resources) {
+                const auto name = text(resource, "resource", true);
+                const auto relative = std::filesystem::path(std::u8string_view(
+                    reinterpret_cast<const char8_t*>(name.data()), name.size()));
+                if (relative.is_absolute() || relative.has_root_name())
+                    throw ContractError("resource must be relative to its declaration");
+                for (const auto& part : relative)
+                    if (part == std::filesystem::path(u8".."))
+                        throw ContractError("resource must not escape its declaration directory");
+                definition.resources.push_back((path.parent_path() / relative).lexically_normal());
+            }
         }
         const auto kind = text(node["kind"], "kind");
         if (kind == "cpp_function") definition.kind = ToolKind::CppFunction;
@@ -217,6 +231,12 @@ ToolDefinition parseDefinitionNode(const YAML::Node& node, const std::filesystem
             const auto file = std::filesystem::path(std::u8string_view(
                 reinterpret_cast<const char8_t*>(fileStr.data()), fileStr.size()));
             if (file.is_absolute() || file.has_root_name()) throw ContractError("Python entry.file must be relative to its YAML");
+            // Every package-relative reference stays inside the declaration directory:
+            // a parent component would resolve outside the installed package.
+            for (const auto& part : file) {
+                if (part == std::filesystem::path(u8".."))
+                    throw ContractError("Python entry.file must not escape its declaration directory: " + fileStr);
+            }
             if (!path.empty()) {
                 definition.script = (path.parent_path() / file).lexically_normal();
             } else {
@@ -283,7 +303,7 @@ void validateToolYaml(const std::string& yamlContent,
     parseToolDefinitionYaml(yamlContent, definitionPath, builtin);
 }
 
-ModuleIndexData parseModuleIndexNode(const YAML::Node& node, const std::filesystem::path& path = {}) {
+ModuleIndexData parseModuleIndexNode(const YAML::Node& node) {
     if (!node.IsMap()) throw ContractError("Module index YAML root must be a mapping");
     fields(node, {"schema_version", "variant", "modules", "tools", "runtime_files"}, "module index root");
 
@@ -446,7 +466,7 @@ ModuleIndexData parseModuleIndexFile(const std::filesystem::path& path) {
     } catch (const std::exception& error) {
         throw ContractError(pathText(path) + ": " + error.what());
     }
-    return parseModuleIndexNode(node, path);
+    return parseModuleIndexNode(node);
 }
 
 void validateModuleIndexYaml(const std::string& yamlContent) {

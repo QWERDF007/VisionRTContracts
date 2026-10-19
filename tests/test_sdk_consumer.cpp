@@ -283,6 +283,7 @@ outputs: []
     // 11. Positive Module Index: Unified module_index.yaml contract
     {
         const std::string validIndexYaml = R"(
+schema_version: 2
 variant: cpu
 modules:
   preprocess:
@@ -308,6 +309,7 @@ runtime_files:
     // 12. Negative Module Index: Duplicate key detection
     {
         const std::string dupKeyIndex = R"(
+schema_version: 2
 variant: cpu
 variant: gpu
 modules:
@@ -324,6 +326,7 @@ tools:
     // 13. Negative Module Index: Dangling module reference
     {
         const std::string danglingIndex = R"(
+schema_version: 2
 variant: cpu
 modules:
   mod1:
@@ -339,6 +342,7 @@ tools:
     // 14. Negative Module Index: Path escaping root
     {
         const std::string escapingIndex = R"(
+schema_version: 2
 variant: cpu
 modules:
   mod1:
@@ -354,6 +358,7 @@ tools:
     // 15. Negative Module Index: Unknown root field
     {
         const std::string unknownRootIndex = R"(
+schema_version: 2
 variant: cpu
 unknown_key: true
 modules:
@@ -405,6 +410,7 @@ outputs: []
 
         // Create valid module_index.yaml
         const std::string validPkgIndex = R"(
+schema_version: 2
 variant: cpu
 modules:
   mod1:
@@ -428,6 +434,7 @@ runtime_files:
         {
             std::ofstream out(tempRoot / "module_index.yaml");
             out << R"(
+schema_version: 2
 modules:
   mod1:
     library: bin/mod1.dll
@@ -443,6 +450,7 @@ tools:
         {
             std::ofstream out(tempRoot / "module_index.yaml");
             out << R"(
+schema_version: 2
 variant: cpu
 modules:
   mod1:
@@ -459,6 +467,7 @@ tools:
         {
             std::ofstream out(tempRoot / "module_index.yaml");
             out << R"(
+schema_version: 2
 variant: cpu
 modules:
   mod1:
@@ -475,6 +484,7 @@ tools:
         {
             std::ofstream out(tempRoot / "module_index.yaml");
             out << R"(
+schema_version: 2
 variant: cpu
 modules:
   mod1:
@@ -493,6 +503,7 @@ runtime_files:
         {
             std::ofstream out(tempRoot / "module_index.yaml");
             out << R"(
+schema_version: 2
 variant: cpu
 modules:
   mod1:
@@ -509,6 +520,7 @@ tools:
         {
             std::ofstream out(tempRoot / "module_index.yaml");
             out << R"(
+schema_version: 2
 variant: cpu
 modules:
   mod1:

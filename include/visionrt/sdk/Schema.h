@@ -43,6 +43,7 @@ struct ToolDefinition {
     std::string registryName;
     std::filesystem::path script;
     std::string symbol;
+    std::vector<std::filesystem::path> resources;
     std::vector<PortDefinition> initParams;
     std::vector<PortDefinition> inputs;
     std::vector<PortDefinition> outputs;

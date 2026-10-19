@@ -42,10 +42,10 @@ ctest --test-dir build --output-on-failure -C Release
 
 ### 供父项目集成
 
-父工程可通过 Git 子模块方式检入 `3rdparty/VisionRTToolSDK`，并使用：
+父工程可通过 Git 子模块方式检入 `3rdparty/VisionRTSDK`，并使用：
 
 ```cmake
-add_subdirectory(3rdparty/VisionRTToolSDK)
+add_subdirectory(3rdparty/VisionRTSDK)
 ```
 
 SDK 暴露以下标准入口：
@@ -53,3 +53,16 @@ SDK 暴露以下标准入口：
 - `VisionRT::ToolSDK`：静态库目标，已传递头文件路径与依赖
 - `VisionRT::visionrt_validate_tool`：校验器命令行目标
 - `VISIONRT_TOOL_SDK_INCLUDE_DIR`：SDK 公共头文件根目录路径
+
+### 可选 PythonInterop
+
+核心 SDK 默认不依赖 Python。启用 `-DVISIONRT_BUILD_PYTHON_INTEROP=ON` 时需要匹配的 Python 嵌入开发环境及 pybind11 CMake 包，缺依赖时配置失败。`VisionRT::PythonInterop` 传递依赖和统一的 pybind11 编译定义；消费者不应再单独定义不同的 pybind11 ABI 选项。
+
+```cmake
+find_package(VisionRTToolSDK CONFIG REQUIRED)
+target_link_libraries(consumer PRIVATE VisionRT::PythonInterop)
+```
+
+使用安装包时通过 `CMAKE_PREFIX_PATH`、`pybind11_DIR`、`Python3_ROOT_DIR` 指定依赖位置。解释器创建、GIL 和实例生命周期由消费者负责，转换边界见 [PythonInterop.h](include/visionrt/sdk/PythonInterop.h)。
+
+[接口与验证索引](docs/README.md)

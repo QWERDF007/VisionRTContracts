@@ -31,10 +31,14 @@ bool underRoot(const std::filesystem::path& root, const std::filesystem::path& p
     return true;
 }
 
-// Declarations under assets/tools/builtin are shipped platform tools; the rest of the package is custom tooling.
-bool builtinDeclaration(const std::filesystem::path& relativePath) {
-    static const std::filesystem::path builtinRoot = std::filesystem::path(u8"assets/tools/builtin");
-    return underRoot(builtinRoot, relativePath.lexically_normal());
+// Every package-relative reference resolves inside the installed package; a normalized
+// escape (for example "a/../../outside.yaml") is a contract violation, not a lookup hint.
+std::filesystem::path resolveInside(const std::filesystem::path& root, const std::string& relative,
+                                    const std::string& context) {
+    const auto resolved = (root / utf8Path(relative)).lexically_normal();
+    if (!underRoot(root, resolved))
+        throw ContractError(context + " resolves outside the package root: " + relative);
+    return resolved;
 }
 
 } // namespace
@@ -55,7 +59,8 @@ ToolsPackage readToolsPackage(const std::filesystem::path& packageRoot) {
     package.index = parseModuleIndexFile(indexFile);
 
     for (const auto& [moduleName, moduleEntry] : package.index.modules) {
-        const auto library = (package.root / utf8Path(moduleEntry.library)).lexically_normal();
+        const auto library = resolveInside(package.root, moduleEntry.library,
+                                           "Module '" + moduleName + "' library");
         if (!std::filesystem::is_regular_file(library, error) || error) {
             throw ContractError("Module '" + moduleName + "' library file does not exist: " + pathText(library));
         }
@@ -66,11 +71,11 @@ ToolsPackage readToolsPackage(const std::filesystem::path& packageRoot) {
     for (const auto& [toolId, toolEntry] : package.index.tools) {
         PackageTool tool;
         tool.toolId = toolId;
-        const auto definitionPath = (package.root / utf8Path(toolEntry.definition)).lexically_normal();
+        const auto definitionPath = resolveInside(package.root, toolEntry.definition, "Tool '" + toolId + "' definition");
         if (!std::filesystem::is_regular_file(definitionPath, error) || error) {
             throw ContractError("Tool '" + toolId + "' definition file does not exist: " + pathText(definitionPath));
         }
-        tool.definition = parseToolDefinitionFile(definitionPath, builtinDeclaration(utf8Path(toolEntry.definition)));
+        tool.definition = parseToolDefinitionFile(definitionPath, true);
         if (tool.definition.id != toolId) {
             throw ContractError("Tool definition id '" + tool.definition.id +
                                 "' does not match index tool_id '" + toolId + "'");
@@ -102,11 +107,20 @@ ToolsPackage readToolsPackage(const std::filesystem::path& packageRoot) {
                 throw ContractError("Python tool '" + toolId + "' declaration missing script entry");
             }
             const auto scriptPath = (definitionPath.parent_path() / tool.definition.script).lexically_normal();
+            if (!underRoot(package.root, scriptPath))
+                throw ContractError("Python tool '" + toolId + "' script resolves outside the package root: " +
+                                    pathText(scriptPath));
             if (!std::filesystem::is_regular_file(scriptPath, error) || error) {
                 throw ContractError("Python tool '" + toolId + "' script file does not exist: " + pathText(scriptPath));
             }
         }
 
+        for (const auto& resource : tool.definition.resources) {
+            if (!underRoot(package.root, resource))
+                throw ContractError("Tool '" + toolId + "' resource resolves outside the package root");
+            if (!std::filesystem::exists(resource, error) || error)
+                throw ContractError("Tool '" + toolId + "' resource file does not exist: " + pathText(resource));
+        }
         package.tools.push_back(std::move(tool));
     }
 
@@ -115,7 +129,7 @@ ToolsPackage readToolsPackage(const std::filesystem::path& packageRoot) {
     });
 
     for (const auto& runtimeFile : package.index.runtimeFiles) {
-        const auto resolved = (package.root / utf8Path(runtimeFile)).lexically_normal();
+        const auto resolved = resolveInside(package.root, runtimeFile, "runtime_files entry");
         if (!std::filesystem::is_regular_file(resolved, error) || error) {
             throw ContractError("runtime_files entry does not exist: " + pathText(resolved));
         }

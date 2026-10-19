@@ -91,32 +91,30 @@ endif()
 
 option(VISIONRT_BUILD_PYTHON_INTEROP "Build optional VisionRT::PythonInterop library" OFF)
 if(VISIONRT_BUILD_PYTHON_INTEROP)
-    if(NOT TARGET pybind11::pybind11)
-        find_package(pybind11 QUIET CONFIG)
-        if(NOT pybind11_FOUND)
-            find_package(Python3 COMPONENTS Interpreter Development.Embed)
-        endif()
+    find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Embed)
+    if(NOT TARGET pybind11::embed)
+        set(PYBIND11_FINDPYTHON ON)
+        find_package(pybind11 CONFIG REQUIRED)
     endif()
-    if(TARGET pybind11::pybind11 OR TARGET pybind11::headers)
-        add_library(VisionRTPythonInterop STATIC
-            src/PythonInterop.cpp
-        )
-        add_library(VisionRT::PythonInterop ALIAS VisionRTPythonInterop)
-        set_target_properties(VisionRTPythonInterop PROPERTIES EXPORT_NAME PythonInterop)
+    add_library(VisionRTPythonInterop STATIC
+        src/PythonInterop.cpp
+    )
+    add_library(VisionRT::PythonInterop ALIAS VisionRTPythonInterop)
+    set_target_properties(VisionRTPythonInterop PROPERTIES EXPORT_NAME PythonInterop)
 
-        target_compile_features(VisionRTPythonInterop PUBLIC cxx_std_20)
-        target_include_directories(VisionRTPythonInterop
-            PUBLIC
-                $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-                $<INSTALL_INTERFACE:include>
-        )
-        target_link_libraries(VisionRTPythonInterop PUBLIC VisionRTToolSDK pybind11::pybind11)
-        if(BUILD_TESTING OR VISIONRT_ENABLE_TEST_PROBES)
-            target_compile_definitions(VisionRTPythonInterop PUBLIC VISIONRT_TEST_PROBES)
-        endif()
-        if(MSVC)
-            target_compile_options(VisionRTPythonInterop PUBLIC /utf-8)
-        endif()
+    target_compile_features(VisionRTPythonInterop PUBLIC cxx_std_20)
+    target_include_directories(VisionRTPythonInterop
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include>
+    )
+    target_link_libraries(VisionRTPythonInterop PUBLIC VisionRTToolSDK pybind11::embed)
+    target_compile_definitions(VisionRTPythonInterop PUBLIC PYBIND11_DETAILED_ERROR_MESSAGES)
+    if(BUILD_TESTING OR VISIONRT_ENABLE_TEST_PROBES)
+        target_compile_definitions(VisionRTPythonInterop PUBLIC VISIONRT_TEST_PROBES)
+    endif()
+    if(MSVC)
+        target_compile_options(VisionRTPythonInterop PUBLIC /utf-8)
     endif()
 endif()
 

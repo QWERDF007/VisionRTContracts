@@ -19,6 +19,9 @@ namespace {
 const char* kToolAlpha = R"(schema_version: 1
 tool_id: test.pkg.alpha
 display_name: 包内工具甲
+category: Explicit Category
+subcategory: Explicit Group
+resources: [settings.json]
 version: 1.2.0
 kind: cpp_function
 entry:
@@ -104,6 +107,7 @@ std::filesystem::path makeRoot(const std::filesystem::path& base, const std::fil
     writeFile(root / "bin" / "mod_a.dll", "dummy module");
     writeFile(root / "bin" / "runtime_dep.dat", "dummy runtime");
     writeFile(root / kAlphaPath, kToolAlpha);
+    writeFile(root / kAlphaPath.parent_path() / "settings.json", "{}");
     writeFile(root / kBravoPath, kToolBravo);
     writeFile(root / kGammaPath, kToolGamma);
     writeFile(root / "module_index.yaml", kValidIndex);
@@ -142,16 +146,22 @@ void readValidPackage(const std::filesystem::path& root) {
     assert(package.tools[2].registryName == "test.pkg.gamma.registry");
     assert(package.tools[0].definition.displayName == "包内工具甲");
     assert(package.tools[0].definition.version == "1.2.0");
+    assert(package.tools[0].definition.category == "Explicit Category");
+    assert(package.tools[0].definition.subcategory == "Explicit Group");
+    const auto relocated = parseToolDefinitionYaml(kToolAlpha, package.root / "unrelated" / "renamed.yaml", true);
+    assert(relocated.category == package.tools[0].definition.category);
+    assert(relocated.subcategory == package.tools[0].definition.subcategory);
+    assert(package.tools[2].definition.category.empty());
+    assert(package.tools[2].definition.subcategory.empty());
     assert(package.tools[0].moduleLibrary == package.root / "bin" / "mod_a.dll");
     assert(std::filesystem::is_regular_file(package.tools[0].moduleLibrary));
     assert(package.tools[0].definition.definitionPath ==
            package.root / std::filesystem::path(u8"assets/tools/builtin/类别/组一/alpha.yaml"));
     assert(package.tools[1].definition.kind == ToolKind::CppClass);
 
-    // Declarations under assets/tools/builtin ship as platform tools, everything else as custom tooling.
     assert(package.tools[0].definition.builtin);
     assert(package.tools[1].definition.builtin);
-    assert(!package.tools[2].definition.builtin);
+    assert(package.tools[2].definition.builtin);
     assert(package.tools[2].definition.definitionPath == package.root / kGammaPath);
 
     // Validation entry delegates to the same reading semantics.
@@ -267,6 +277,39 @@ outputs: []
         "  test.pkg.alpha:\n    module: mod_a\n    definition: assets/tools/builtin/类别/组一/alpha.yaml\n"
         "  test.pkg.alpha:\n    module: mod_a\n    definition: assets/tools/builtin/类别/组二/bravo.yaml\n");
     assert(failsWith([&] { readToolsPackage(duplicateKey); }, "Duplicate key"));
+
+    // A normalized index reference must not climb out of the package root.
+    auto escapingDefinition = makeRoot(base, "escaping_definition");
+    writeFile(escapingDefinition / "module_index.yaml",
+        "schema_version: 2\nvariant: cpu\nmodules:\n  mod_a:\n    library: bin/mod_a.dll\ntools:\n"
+        "  test.pkg.alpha:\n    module: mod_a\n    definition: assets/../../outside.yaml\n");
+    assert(failsWith([&] { readToolsPackage(escapingDefinition); }, "escapes root"));
+
+    auto escapingLibrary = makeRoot(base, "escaping_library");
+    writeFile(escapingLibrary / "module_index.yaml",
+        "schema_version: 2\nvariant: cpu\nmodules:\n  mod_a:\n    library: bin/../../../outside.dll\ntools:\n"
+        "  test.pkg.alpha:\n    module: mod_a\n    definition: assets/tools/builtin/类别/组一/alpha.yaml\n");
+    assert(failsWith([&] { readToolsPackage(escapingLibrary); }, "escapes root"));
+
+    // A declaration must not point at a script outside its own package.
+    auto escapingScript = makeRoot(base, "escaping_script");
+    writeFile(escapingScript / "module_index.yaml",
+        "schema_version: 2\nvariant: cpu\ntools:\n"
+        "  test.pkg.py:\n    definition: assets/tools/custom/Python/示例/escape.yaml\n");
+    writeFile(escapingScript / std::filesystem::path(u8"assets/tools/custom/Python/示例/escape.yaml"),
+        R"(schema_version: 1
+tool_id: test.pkg.py
+display_name: 越界脚本
+version: 1.0.0
+kind: python_class
+entry:
+  file: ../../../../../outside.py
+  symbol: ToolInstance
+init_params: []
+inputs: []
+outputs: []
+)");
+    assert(failsWith([&] { readToolsPackage(escapingScript); }, "must not escape its declaration directory"));
 }
 
 } // namespace
@@ -284,6 +327,9 @@ int main() {
         const auto unicodeRoot = makeRoot(base, std::filesystem::path(u8"测试 目录/工具 包 1.0"));
         readValidPackage(unicodeRoot);
         readInvalidPackages(base);
+        const auto missingResource = makeRoot(base, "missing-resource");
+        std::filesystem::remove(missingResource / kAlphaPath.parent_path() / "settings.json");
+        assert(failsWith([&] { readToolsPackage(missingResource); }, "resource file does not exist"));
         std::filesystem::remove_all(base, error);
         std::cout << "sdk package contract passed\n";
         return 0;

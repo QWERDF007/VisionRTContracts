@@ -47,6 +47,9 @@ def main():
     parser.add_argument("--opencv-bin", default="")
     parser.add_argument("--make-program", default="")
     parser.add_argument("--cxx-compiler", default="")
+    parser.add_argument("--python-interop", action="store_true")
+    parser.add_argument("--pybind11-dir", default="")
+    parser.add_argument("--python-root", default="")
     args = parser.parse_args()
 
     cmake_bin = find_cmake()
@@ -77,12 +80,21 @@ find_package(VisionRTToolSDK CONFIG REQUIRED)
 
 add_executable(consumer_bin main.cpp)
 target_link_libraries(consumer_bin PRIVATE VisionRT::ToolSDK)
+if(MSVC)
+    target_compile_options(consumer_bin PRIVATE /UNDEBUG)
+else()
+    target_compile_options(consumer_bin PRIVATE -UNDEBUG)
+endif()
 
 # Also verify imported executable target exists
 if(NOT TARGET VisionRT::visionrt_validate_tool)
     message(FATAL_ERROR "Imported target VisionRT::visionrt_validate_tool not found!")
 endif()
 """
+        if args.python_interop:
+            cmakelists_content += "\ntarget_link_libraries(consumer_bin PRIVATE VisionRT::PythonInterop)\n"
+        else:
+            cmakelists_content += "\nif(TARGET VisionRT::PythonInterop)\nmessage(FATAL_ERROR \"Core-only SDK unexpectedly exports PythonInterop\")\nendif()\n"
         (consumer_src / "CMakeLists.txt").write_text(cmakelists_content, encoding="utf-8")
 
         main_cpp_content = """#include <visionrt/sdk/Value.h>
@@ -97,6 +109,34 @@ int main() {
         return 0;
     }
     return 1;
+}
+"""
+        if args.python_interop:
+            main_cpp_content = """#include <visionrt/sdk/PythonInterop.h>
+#include <visionrt/sdk/Schema.h>
+#include <pybind11/embed.h>
+#include <iostream>
+
+int main() {
+    visionrt::PortValue result;
+    {
+        pybind11::scoped_interpreter interpreter;
+        auto scope = pybind11::dict();
+        {
+            auto image = cv::Mat(3, 4, CV_8UC1, cv::Scalar(17));
+            visionrt::PortValue input = visionrt::ImageBatch({visionrt::OwnedImage::copyOf(image)});
+            scope["images"] = visionrt::toPythonReadonly(input);
+        }
+        pybind11::exec("assert images[0].shape == (3, 4)\\nassert not images[0].flags.writeable\\nassert int(images[0][2, 3]) == 17", scope);
+        result = visionrt::fromPython({visionrt::Type::ImageBatch}, scope["images"]);
+        scope["labels"] = visionrt::toPythonReadonly(visionrt::StringArray(1, visionrt::Layout::Dense,
+            {visionrt::StringBuffer({2}, {"cat", "dog"})}));
+        pybind11::exec("assert labels.tolist() == ['cat', 'dog']\\nassert not labels.flags.writeable", scope);
+    }
+    const auto& image = std::get<visionrt::ImageBatch>(result).images()[0];
+    if (image.rows() != 3 || image.cols() != 4 || image.data()[0] != 17) return 1;
+    std::cout << "[Standalone Consumer] Installed PythonInterop and C++ ownership verified!" << std::endl;
+    return 0;
 }
 """
         (consumer_src / "main.cpp").write_text(main_cpp_content, encoding="utf-8")
@@ -128,6 +168,10 @@ int main() {
             config_cmd.append(f"-DCMAKE_MAKE_PROGRAM={args.make_program}")
         if args.cxx_compiler:
             config_cmd.append(f"-DCMAKE_CXX_COMPILER={args.cxx_compiler}")
+        if args.pybind11_dir:
+            config_cmd.append(f"-Dpybind11_DIR={args.pybind11_dir}")
+        if args.python_root:
+            config_cmd.append(f"-DPython3_ROOT_DIR={args.python_root}")
 
         run_cmd(config_cmd)
 
@@ -152,6 +196,9 @@ int main() {
                         extra_env["PATH"] = str(bin_cand) + os.pathsep + os.environ.get("PATH", "")
                         break
 
+        if args.python_interop and args.python_root:
+            extra_env["PYTHONHOME"] = args.python_root
+            extra_env["PATH"] = args.python_root + os.pathsep + extra_env.get("PATH", os.environ.get("PATH", ""))
         print("[Install Test] Running consumer binary...")
         res = run_cmd([str(bin_path)], env=extra_env)
         print(res.stdout)

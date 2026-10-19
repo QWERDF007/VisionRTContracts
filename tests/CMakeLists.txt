@@ -55,6 +55,11 @@ if(_opencv_bin_dir)
 endif()
 
 # 5. test_isolated_installation
+set(_interop_install_args "")
+if(VISIONRT_BUILD_PYTHON_INTEROP)
+    get_filename_component(_python_root "${Python3_EXECUTABLE}" DIRECTORY)
+    list(APPEND _interop_install_args --python-interop --pybind11-dir "${pybind11_DIR}" --python-root "${_python_root}")
+endif()
 add_test(
     NAME test_isolated_installation
     COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/test_isolated_installation.py"
@@ -64,7 +69,16 @@ add_test(
             --opencv-bin "${_opencv_bin_dir}"
             --make-program "${CMAKE_MAKE_PROGRAM}"
             --cxx-compiler "${CMAKE_CXX_COMPILER}"
+            ${_interop_install_args}
 )
 if(_opencv_bin_dir)
     set_tests_properties(test_isolated_installation PROPERTIES ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${_opencv_bin_dir}")
 endif()
+
+foreach(_sdk_test IN ITEMS test_sdk_value_contract test_sdk_consumer test_sdk_package_contract)
+    if(MSVC)
+        target_compile_options(${_sdk_test} PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(${_sdk_test} PRIVATE -UNDEBUG)
+    endif()
+endforeach()
