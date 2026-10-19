@@ -10,6 +10,13 @@ namespace visionrt {
 
 enum class ToolKind { CppFunction, CppClass, PythonFunction, PythonClass };
 
+struct PortTypeReference {
+    std::string flowParameter;
+    std::string nodeParameter;
+    std::string portParameter;
+    bool operator==(const PortTypeReference&) const = default;
+};
+
 struct PortDefinition {
     std::string id;
     std::string name;
@@ -28,6 +35,7 @@ struct PortDefinition {
     std::string imagePort;
     std::string colorOrder;
     std::string sameGeometryAsInput;
+    std::optional<PortTypeReference> typeFrom;
 };
 
 struct ToolDefinition {

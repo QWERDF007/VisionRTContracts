@@ -314,6 +314,52 @@ outputs: []
 
 } // namespace
 
+void sourceDerivedOutputsHaveNoConcreteDeclaration(const std::filesystem::path& root) {
+    const std::string declaration = R"(schema_version: 1
+tool_id: test.receive
+display_name: 接收
+version: 1.0.0
+kind: cpp_class
+entry: {registry_name: test.receive}
+init_params:
+- {id: flow, name: 流程, type: String, default: ''}
+- {id: node, name: 节点, type: String, default: ''}
+- {id: port, name: 端口, type: String, default: ''}
+inputs: []
+outputs:
+- id: value
+  name: 数据
+  type_from: {flow: flow, node: node, port: port}
+)";
+    const auto parsed = parseToolDefinitionYaml(declaration);
+    const auto &reference = parsed.outputs.back().typeFrom;
+    assert(reference && reference->flowParameter == "flow" && reference->nodeParameter == "node"
+        && reference->portParameter == "port");
+    auto mixed = declaration;
+    mixed += "  type: Int\n";
+    assert(failsWith([&] { parseToolDefinitionYaml(mixed); }, "cannot be combined"));
+    auto missing = declaration;
+    const auto position = missing.find("port: port");
+    missing.replace(position, std::string("port: port").size(), "port: missing");
+    assert(failsWith([&] { parseToolDefinitionYaml(missing); }, "String initialization parameter"));
+    auto incorrect = parsed;
+    incorrect.outputs.back().typeFrom->nodeParameter = "value";
+    assert(failsWith([&] { validateToolDefinition(incorrect); }, "String initialization parameter"));
+    incorrect = parsed;
+    incorrect.outputs.back().colorOrder = "BGR";
+    assert(failsWith([&] { validateToolDefinition(incorrect); }, "display attributes"));
+    writeFile(root / "receive.yaml", declaration);
+    writeFile(root / "module_index.yaml",
+        "schema_version: 2\nvariant: reference\nmodules: {}\ntools:\n"
+        "  test.receive:\n    definition: receive.yaml\n    host_binding: visionrt.receiver\n");
+    assert(readToolsPackage(root).tools.front().definition.outputs.back().typeFrom.has_value());
+    writeFile(root / "bin/vst_test.dll", "fixture");
+    writeFile(root / "module_index.yaml",
+        "schema_version: 2\nvariant: reference\nmodules:\n  native:\n    library: bin/vst_test.dll\ntools:\n"
+        "  test.receive:\n    definition: receive.yaml\n    module: native\n");
+    assert(failsWith([&] { readToolsPackage(root); }, "require host_binding"));
+}
+
 int main() {
     const auto unique = std::to_string(static_cast<long long>(
         std::chrono::steady_clock::now().time_since_epoch().count()));
@@ -323,6 +369,7 @@ int main() {
     std::filesystem::create_directories(base);
 
     try {
+        sourceDerivedOutputsHaveNoConcreteDeclaration(base / "derived-types");
         // Chinese characters and spaces in the package path are ordinary paths.
         const auto unicodeRoot = makeRoot(base, std::filesystem::path(u8"测试 目录/工具 包 1.0"));
         readValidPackage(unicodeRoot);

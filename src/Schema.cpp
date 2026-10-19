@@ -62,6 +62,14 @@ void validatePorts(const std::vector<PortDefinition>& ports, const std::string& 
             throw ContractError("Port name must not be empty: " + port.id);
         }
 
+        if (port.typeFrom) {
+            if (!output || isStatus) throw ContractError("type_from requires a business output: " + port.id);
+            if (!isMissing(port.defaultValue) || !port.editor.empty() || port.minimum || port.maximum || port.step
+                || port.decimals || !port.options.empty() || !port.optionsProvider.empty() || !port.imageInput.empty()
+                || !port.imagePort.empty() || !port.colorOrder.empty() || !port.sameGeometryAsInput.empty())
+                throw ContractError("type_from cannot have concrete value or display attributes: " + port.id);
+            continue;
+        }
         validateTypeSpec(port.type);
 
         if (output) {
@@ -245,6 +253,14 @@ void validateToolDefinition(const ToolDefinition& def) {
         checkImageRef(def.inputs, port.imageInput, "image_input");
     }
     for (const auto& port : def.outputs) {
+        if (port.typeFrom) {
+            for (const auto& parameter : {port.typeFrom->flowParameter, port.typeFrom->nodeParameter,
+                    port.typeFrom->portParameter}) {
+                const auto* reference = findPort(def.initParams, parameter);
+                if (!reference || reference->typeFrom || reference->type != TypeSpec{Type::String})
+                    throw ContractError("type_from must reference a String initialization parameter: " + parameter);
+            }
+        }
         checkImageRef(def.outputs, port.imagePort, "image_port");
         checkImageRef(def.inputs, port.sameGeometryAsInput, "same_geometry_as_input");
     }

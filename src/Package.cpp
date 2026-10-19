@@ -82,6 +82,10 @@ ToolsPackage readToolsPackage(const std::filesystem::path& packageRoot) {
         }
         tool.registryName = tool.definition.registryName;
         tool.hostBinding = toolEntry.hostBinding;
+        if (tool.hostBinding.empty() && std::any_of(tool.definition.outputs.begin(), tool.definition.outputs.end(),
+                [](const auto& port) { return port.typeFrom.has_value(); })) {
+            throw ContractError("Source-derived output types require host_binding: " + toolId);
+        }
         if (!toolIds.insert(tool.toolId).second) {
             throw ContractError("Duplicate tool_id in package: '" + tool.toolId + "'");
         }

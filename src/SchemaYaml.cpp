@@ -112,7 +112,7 @@ std::vector<PortDefinition> parsePorts(const YAML::Node& node, const std::string
     ports.reserve(node.size());
     for (const auto& item : node) {
         if (output) {
-            fields(item, {"id", "name", "type", "dtype", "rank", "layout", "image_port", "display"}, direction);
+            fields(item, {"id", "name", "type", "type_from", "dtype", "rank", "layout", "image_port", "display"}, direction);
         } else {
             fields(item, {"id", "name", "type", "dtype", "rank", "layout", "default", "editor", "min", "max",
                 "step", "decimals", "options", "options_provider", "tab", "group", "image_input"}, direction);
@@ -122,7 +122,15 @@ std::vector<PortDefinition> parsePorts(const YAML::Node& node, const std::string
         const auto context = direction + "." + port.id;
         try {
             port.name = text(item["name"], "name", false);
-            port.type = decodeTypeSpec(item);
+            if (const auto reference = item["type_from"]) {
+                fields(reference, {"flow", "node", "port"}, "type_from");
+                for (const auto* field : {"type", "dtype", "rank", "layout", "image_port", "display"})
+                    if (item[field]) throw ContractError("type_from cannot be combined with " + std::string(field));
+                port.typeFrom = PortTypeReference{text(reference["flow"], "type_from.flow", true),
+                    text(reference["node"], "type_from.node", true), text(reference["port"], "type_from.port", true)};
+            } else {
+                port.type = decodeTypeSpec(item);
+            }
             if (item["default"]) port.defaultValue = decodeValue(item["default"], port.type);
             if (item["editor"]) port.editor = text(item["editor"], "editor");
             if (item["tab"]) port.tab = text(item["tab"], "tab");
