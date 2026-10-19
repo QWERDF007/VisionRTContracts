@@ -57,7 +57,6 @@ py::capsule ownerCapsule(std::shared_ptr<const void> owner, const void* begin, s
 py::array readonlyArray(py::dtype dtype, const std::vector<py::ssize_t>& shape,
                         const std::vector<py::ssize_t>& strides, const void* data,
                         std::shared_ptr<const void> owner) {
-    fprintf(stderr, "[DEBUG-SDK] readonlyArray enter\n"); fflush(stderr);
     std::size_t bytes = static_cast<std::size_t>(dtype.itemsize());
     for (std::size_t axis = 0; axis < shape.size(); ++axis) {
         if (shape[axis] == 0) { bytes = 0; break; }
@@ -67,17 +66,12 @@ py::array readonlyArray(py::dtype dtype, const std::vector<py::ssize_t>& shape,
             throw ContractError("Input view stride extent overflows address range");
         bytes += count * stride;
     }
-    fprintf(stderr, "[DEBUG-SDK] readonlyArray bytes calculated\n"); fflush(stderr);
     // A null pointer would make NumPy allocate even for a zero-element view.
     static const std::byte emptyStorage{};
     const void* pointer = data ? data : &emptyStorage;
-    fprintf(stderr, "[DEBUG-SDK] creating ownerCapsule\n"); fflush(stderr);
     auto capsule = ownerCapsule(std::move(owner), pointer, bytes);
-    fprintf(stderr, "[DEBUG-SDK] creating py::array\n"); fflush(stderr);
     py::array array(dtype, shape, strides, pointer, capsule);
-    fprintf(stderr, "[DEBUG-SDK] setting writeable false directly on flags\n"); fflush(stderr);
     array.attr("flags").attr("writeable") = false;
-    fprintf(stderr, "[DEBUG-SDK] readonlyArray exit\n"); fflush(stderr);
     return array;
 }
 
@@ -113,7 +107,7 @@ py::array stringView(const StringBuffer& buffer) {
     py::tuple shape(buffer.shape().size());
     for (std::size_t i = 0; i < buffer.shape().size(); ++i) shape[i] = py::int_(buffer.shape()[i]);
     auto result = array.attr("reshape")(shape).cast<py::array>();
-    result.attr("setflags")(py::arg("write") = false);
+    result.attr("flags").attr("writeable") = false;
     return result;
 }
 
