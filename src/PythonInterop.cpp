@@ -75,6 +75,7 @@ py::array readonlyArray(py::dtype dtype, const std::vector<py::ssize_t>& shape,
     auto capsule = ownerCapsule(std::move(owner), pointer, bytes);
     fprintf(stderr, "[DEBUG-SDK] creating py::array\n"); fflush(stderr);
     py::array array(dtype, shape, strides, pointer, capsule);
+    fprintf(stderr, "[DEBUG-SDK] py::array created, ptr=%p, err=%p\n", (void*)array.ptr(), (void*)PyErr_Occurred()); fflush(stderr);
     fprintf(stderr, "[DEBUG-SDK] setting writeable false\n"); fflush(stderr);
     array.attr("setflags")(py::arg("write") = false);
     fprintf(stderr, "[DEBUG-SDK] readonlyArray exit\n"); fflush(stderr);
