@@ -1,3 +1,4 @@
+#include <visionrt/sdk/Package.h>
 #include <visionrt/sdk/Schema.h>
 #include <visionrt/sdk/SchemaYaml.h>
 #include <iostream>

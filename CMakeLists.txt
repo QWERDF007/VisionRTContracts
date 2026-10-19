@@ -55,6 +55,7 @@ endif()
 
 add_library(VisionRTToolSDK STATIC
     src/Contract.cpp
+    src/Package.cpp
     src/Schema.cpp
     src/SchemaYaml.cpp
     src/Value.cpp

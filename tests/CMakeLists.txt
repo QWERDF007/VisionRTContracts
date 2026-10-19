@@ -32,7 +32,18 @@ if(_opencv_bin_dir)
     set_tests_properties(test_sdk_consumer PROPERTIES ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${_opencv_bin_dir}")
 endif()
 
-# 3. test_cli
+# 3. test_sdk_package_contract
+add_executable(test_sdk_package_contract test_sdk_package_contract.cpp)
+target_link_libraries(test_sdk_package_contract PRIVATE VisionRT::ToolSDK)
+if(MSVC)
+    target_compile_options(test_sdk_package_contract PRIVATE /utf-8)
+endif()
+add_test(NAME test_sdk_package_contract COMMAND test_sdk_package_contract)
+if(_opencv_bin_dir)
+    set_tests_properties(test_sdk_package_contract PROPERTIES ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${_opencv_bin_dir}")
+endif()
+
+# 4. test_cli
 add_test(
     NAME test_cli
     COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/test_cli.py"
@@ -43,7 +54,7 @@ if(_opencv_bin_dir)
     set_tests_properties(test_cli PROPERTIES ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${_opencv_bin_dir}")
 endif()
 
-# 4. test_isolated_installation
+# 5. test_isolated_installation
 add_test(
     NAME test_isolated_installation
     COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/test_isolated_installation.py"

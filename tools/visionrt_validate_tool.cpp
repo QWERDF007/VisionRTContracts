@@ -1,4 +1,4 @@
-#include "visionrt/sdk/SchemaYaml.h"
+#include "visionrt/sdk/Package.h"
 #include <iostream>
 #include <string_view>
 #include <vector>
@@ -42,8 +42,8 @@ int runValidation(int argc, const wchar_t* const* argv) {
 
     try {
         if (isPackage) {
-            visionrt::validateToolsPackage(targetPath);
-            std::cout << "Valid tools package: " << targetPath.string() << "\n";
+            const auto package = visionrt::readToolsPackage(targetPath);
+            std::cout << "Valid tools package: " << targetPath.string() << " (" << package.tools.size() << " tools)\n";
         } else if (isIndex) {
             const auto index = visionrt::parseModuleIndexFile(targetPath);
             std::cout << "Valid module index: " << index.tools.size() << " tools across " << index.modules.size() << " modules\n";
