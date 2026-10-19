@@ -64,18 +64,19 @@ outputs:
     type: Float
 )";
 
-const char* kValidIndex = R"(variant: cpu
+const char* kValidIndex = R"(schema_version: 2
+variant: cpu
 modules:
   mod_a:
     library: bin/mod_a.dll
 tools:
-  test.pkg.bravo.registry:
+  test.pkg.bravo:
     module: mod_a
     definition: assets/tools/builtin/类别/组二/bravo.yaml
   test.pkg.alpha:
     module: mod_a
     definition: assets/tools/builtin/类别/组一/alpha.yaml
-  test.pkg.gamma.registry:
+  test.pkg.gamma:
     module: mod_a
     definition: assets/tools/custom/Python/示例/gamma.yaml
 runtime_files:
@@ -126,6 +127,7 @@ bool failsWith(Callable&& callable, const std::string& fragment) {
 void readValidPackage(const std::filesystem::path& root) {
     const auto package = readToolsPackage(root);
     assert(package.root == std::filesystem::absolute(root).lexically_normal());
+    assert(package.index.schemaVersion == 2);
     assert(package.index.variant == "cpu");
     assert(package.index.tools.size() == 3);
     assert(package.index.modules.size() == 1);
@@ -170,22 +172,34 @@ void readInvalidPackages(const std::filesystem::path& base) {
     writeFile(brokenIndex / "module_index.yaml", "modules: [ unclosed\n");
     assert(failsWith([&] { readToolsPackage(brokenIndex); }, "YAML"));
 
+    auto missingSchemaVer = makeRoot(base, "missing_schema_ver");
+    writeFile(missingSchemaVer / "module_index.yaml",
+        "variant: cpu\nmodules:\n  mod_a:\n    library: bin/mod_a.dll\ntools:\n"
+        "  test.pkg.alpha:\n    module: mod_a\n    definition: assets/tools/builtin/类别/组一/alpha.yaml\n");
+    assert(failsWith([&] { readToolsPackage(missingSchemaVer); }, "Missing required field 'schema_version'"));
+
+    auto wrongSchemaVer = makeRoot(base, "wrong_schema_ver");
+    writeFile(wrongSchemaVer / "module_index.yaml",
+        "schema_version: 1\nvariant: cpu\nmodules:\n  mod_a:\n    library: bin/mod_a.dll\ntools:\n"
+        "  test.pkg.alpha:\n    module: mod_a\n    definition: assets/tools/builtin/类别/组一/alpha.yaml\n");
+    assert(failsWith([&] { readToolsPackage(wrongSchemaVer); }, "Unsupported schema_version"));
+
     auto dangling = makeRoot(base, "dangling");
     writeFile(dangling / "module_index.yaml",
-        "variant: cpu\nmodules:\n  mod_a:\n    library: bin/mod_a.dll\ntools:\n"
+        "schema_version: 2\nvariant: cpu\nmodules:\n  mod_a:\n    library: bin/mod_a.dll\ntools:\n"
         "  test.pkg.alpha:\n    module: mod_missing\n    definition: assets/tools/builtin/类别/组一/alpha.yaml\n");
     assert(failsWith([&] { readToolsPackage(dangling); }, "references undeclared module"));
 
     auto unreferenced = makeRoot(base, "unreferenced");
     writeFile(unreferenced / "module_index.yaml",
-        "variant: cpu\nmodules:\n  mod_a:\n    library: bin/mod_a.dll\n  mod_b:\n    library: bin/mod_b.dll\n"
+        "schema_version: 2\nvariant: cpu\nmodules:\n  mod_a:\n    library: bin/mod_a.dll\n  mod_b:\n    library: bin/mod_b.dll\n"
         "tools:\n  test.pkg.alpha:\n    module: mod_a\n"
         "    definition: assets/tools/builtin/类别/组一/alpha.yaml\n");
     assert(failsWith([&] { readToolsPackage(unreferenced); }, "not referenced by any tool"));
 
     auto unknownField = makeRoot(base, "unknown_field");
     writeFile(unknownField / "module_index.yaml",
-        "variant: cpu\nunknown_key: bad\nmodules:\n  mod_a:\n    library: bin/mod_a.dll\ntools:\n"
+        "schema_version: 2\nvariant: cpu\nunknown_key: bad\nmodules:\n  mod_a:\n    library: bin/mod_a.dll\ntools:\n"
         "  test.pkg.alpha:\n    module: mod_a\n    definition: assets/tools/builtin/类别/组一/alpha.yaml\n");
     assert(failsWith([&] { readToolsPackage(unknownField); }, "unknown field"));
 
@@ -197,26 +211,42 @@ void readInvalidPackages(const std::filesystem::path& base) {
     std::filesystem::remove(missingDefinition / kAlphaPath);
     assert(failsWith([&] { readToolsPackage(missingDefinition); }, "definition file does not exist"));
 
-    auto registryMismatch = makeRoot(base, "registry_mismatch");
-    writeFile(registryMismatch / kAlphaPath,
+    auto toolIdMismatch = makeRoot(base, "tool_id_mismatch");
+    writeFile(toolIdMismatch / kAlphaPath,
         R"(schema_version: 1
-tool_id: test.pkg.alpha
+tool_id: test.pkg.different
 display_name: 包内工具甲
 version: 1.2.0
 kind: cpp_function
 entry:
-  registry_name: test.pkg.other
+  registry_name: test.pkg.alpha
 init_params: []
 inputs: []
 outputs: []
 )");
-    assert(failsWith([&] { readToolsPackage(registryMismatch); }, "does not match index tool key"));
+    assert(failsWith([&] { readToolsPackage(toolIdMismatch); }, "does not match index tool_id"));
+
+    auto bothModuleAndHostBinding = makeRoot(base, "both_module_host");
+    writeFile(bothModuleAndHostBinding / "module_index.yaml",
+        "schema_version: 2\nvariant: cpu\nmodules:\n  mod_a:\n    library: bin/mod_a.dll\ntools:\n"
+        "  test.pkg.alpha:\n    module: mod_a\n    host_binding: platform_recv\n    definition: assets/tools/builtin/类别/组一/alpha.yaml\n");
+    assert(failsWith([&] { readToolsPackage(bothModuleAndHostBinding); }, "cannot specify both"));
+
+    auto cppMissingModule = makeRoot(base, "cpp_missing_module");
+    writeFile(cppMissingModule / "module_index.yaml",
+        "schema_version: 2\nvariant: cpu\ntools:\n"
+        "  test.pkg.alpha:\n    definition: assets/tools/builtin/类别/组一/alpha.yaml\n");
+    assert(failsWith([&] { readToolsPackage(cppMissingModule); }, "must reference a module"));
 
     auto missingRuntime = makeRoot(base, "missing_runtime");
     std::filesystem::remove(missingRuntime / "bin" / "runtime_dep.dat");
     assert(failsWith([&] { readToolsPackage(missingRuntime); }, "runtime_files entry does not exist"));
 
     auto duplicateIdentity = makeRoot(base, "duplicate_identity");
+    writeFile(duplicateIdentity / "module_index.yaml",
+        "schema_version: 2\nvariant: cpu\nmodules:\n  mod_a:\n    library: bin/mod_a.dll\ntools:\n"
+        "  test.pkg.alpha:\n    module: mod_a\n    definition: assets/tools/builtin/类别/组一/alpha.yaml\n"
+        "  test.pkg.bravo:\n    module: mod_a\n    definition: assets/tools/builtin/类别/组二/bravo.yaml\n");
     writeFile(duplicateIdentity / kBravoPath,
         R"(schema_version: 1
 tool_id: test.pkg.alpha
@@ -229,11 +259,11 @@ init_params: []
 inputs: []
 outputs: []
 )");
-    assert(failsWith([&] { readToolsPackage(duplicateIdentity); }, "Duplicate tool_id"));
+    assert(failsWith([&] { readToolsPackage(duplicateIdentity); }, "does not match index tool_id"));
 
     auto duplicateKey = makeRoot(base, "duplicate_key");
     writeFile(duplicateKey / "module_index.yaml",
-        "variant: cpu\nmodules:\n  mod_a:\n    library: bin/mod_a.dll\ntools:\n"
+        "schema_version: 2\nvariant: cpu\nmodules:\n  mod_a:\n    library: bin/mod_a.dll\ntools:\n"
         "  test.pkg.alpha:\n    module: mod_a\n    definition: assets/tools/builtin/类别/组一/alpha.yaml\n"
         "  test.pkg.alpha:\n    module: mod_a\n    definition: assets/tools/builtin/类别/组二/bravo.yaml\n");
     assert(failsWith([&] { readToolsPackage(duplicateKey); }, "Duplicate key"));

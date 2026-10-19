@@ -15,6 +15,7 @@ struct PackageTool {
     ToolDefinition definition;            // parsed and validated declaration
     std::string registryName;             // C++ factory locator reported by the declaration
     std::filesystem::path moduleLibrary;  // absolute module path; empty for non-C++ implementations
+    std::string hostBinding;              // host platform receiver binding; empty for domain/python tools
 };
 
 // Strong-typed description of a complete tools package, produced by reading the

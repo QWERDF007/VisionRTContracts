@@ -31,14 +31,16 @@ struct ModuleEntry {
 };
 
 struct ToolIndexEntry {
-    std::string module;
-    std::string definition;
+    std::string module;       // domain DLL module reference (mutually exclusive with hostBinding)
+    std::string definition;   // relative path to tool declaration YAML
+    std::string hostBinding;  // host platform receiver binding (mutually exclusive with module)
 };
 
 struct ModuleIndexData {
+    int schemaVersion = 2;
     std::string variant;
     std::unordered_map<std::string, ModuleEntry> modules;
-    std::unordered_map<std::string, ToolIndexEntry> tools;
+    std::unordered_map<std::string, ToolIndexEntry> tools; // key is tool_id
     std::vector<std::string> runtimeFiles;
 };
 

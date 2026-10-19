@@ -285,40 +285,49 @@ void validateToolYaml(const std::string& yamlContent,
 
 ModuleIndexData parseModuleIndexNode(const YAML::Node& node, const std::filesystem::path& path = {}) {
     if (!node.IsMap()) throw ContractError("Module index YAML root must be a mapping");
-    fields(node, {"variant", "modules", "tools", "runtime_files"}, "module index root");
+    fields(node, {"schema_version", "variant", "modules", "tools", "runtime_files"}, "module index root");
 
     ModuleIndexData result;
+
+    if (!node["schema_version"]) throw ContractError("Missing required field 'schema_version'");
+    try {
+        result.schemaVersion = node["schema_version"].as<int>();
+    } catch (...) {
+        throw ContractError("schema_version must be an integer");
+    }
+    if (result.schemaVersion != 2) {
+        throw ContractError("Unsupported schema_version: " + std::to_string(result.schemaVersion) + " (expected 2)");
+    }
 
     if (!node["variant"]) throw ContractError("Missing required field 'variant'");
     result.variant = text(node["variant"], "variant", true);
     if (result.variant.empty()) throw ContractError("variant must not be empty");
 
-    if (!node["modules"]) throw ContractError("Missing required field 'modules'");
-    if (!node["modules"].IsMap()) throw ContractError("modules must be a mapping");
-    if (node["modules"].size() == 0) throw ContractError("modules must not be empty");
+    if (node["modules"]) {
+        if (!node["modules"].IsMap()) throw ContractError("modules must be a mapping");
+        for (const auto& modField : node["modules"]) {
+            if (!modField.first.IsScalar()) throw ContractError("Module name in 'modules' must be a scalar");
+            const auto modName = modField.first.as<std::string>();
+            if (modName.empty()) throw ContractError("Module name in 'modules' must not be empty");
+            const auto& modNode = modField.second;
+            if (!modNode.IsMap()) throw ContractError("Module '" + modName + "' entry must be a mapping");
+            fields(modNode, {"library"}, "Module '" + modName + "'");
 
-    for (const auto& modField : node["modules"]) {
-        if (!modField.first.IsScalar()) throw ContractError("Module name in 'modules' must be a scalar");
-        const auto modName = modField.first.as<std::string>();
-        if (modName.empty()) throw ContractError("Module name in 'modules' must not be empty");
-        const auto& modNode = modField.second;
-        if (!modNode.IsMap()) throw ContractError("Module '" + modName + "' entry must be a mapping");
-        fields(modNode, {"library"}, "Module '" + modName + "'");
+            if (!modNode["library"]) throw ContractError("Module '" + modName + "' missing required field 'library'");
+            const auto libStr = text(modNode["library"], "library", true);
+            if (libStr.empty()) throw ContractError("Module '" + modName + "' library path must not be empty");
 
-        if (!modNode["library"]) throw ContractError("Module '" + modName + "' missing required field 'library'");
-        const auto libStr = text(modNode["library"], "library", true);
-        if (libStr.empty()) throw ContractError("Module '" + modName + "' library path must not be empty");
+            const auto libPath = std::filesystem::path(std::u8string(reinterpret_cast<const char8_t*>(libStr.data()), libStr.size()));
+            if (libPath.is_absolute() || libPath.has_root_name()) {
+                throw ContractError("Module '" + modName + "' library path must be relative: " + libStr);
+            }
+            const auto normLib = libPath.lexically_normal();
+            if (!normLib.empty() && normLib.begin()->string() == "..") {
+                throw ContractError("Module '" + modName + "' library path escapes root: " + libStr);
+            }
 
-        const auto libPath = std::filesystem::path(std::u8string(reinterpret_cast<const char8_t*>(libStr.data()), libStr.size()));
-        if (libPath.is_absolute() || libPath.has_root_name()) {
-            throw ContractError("Module '" + modName + "' library path must be relative: " + libStr);
+            result.modules[modName] = ModuleEntry{libStr};
         }
-        const auto normLib = libPath.lexically_normal();
-        if (!normLib.empty() && normLib.begin()->string() == "..") {
-            throw ContractError("Module '" + modName + "' library path escapes root: " + libStr);
-        }
-
-        result.modules[modName] = ModuleEntry{libStr};
     }
 
     if (!node["tools"]) throw ContractError("Missing required field 'tools'");
@@ -326,40 +335,54 @@ ModuleIndexData parseModuleIndexNode(const YAML::Node& node, const std::filesyst
     if (node["tools"].size() == 0) throw ContractError("tools must not be empty");
 
     for (const auto& toolField : node["tools"]) {
-        if (!toolField.first.IsScalar()) throw ContractError("Tool registry name in 'tools' must be a scalar");
-        const auto regName = toolField.first.as<std::string>();
-        if (regName.empty()) throw ContractError("Tool registry name in 'tools' must not be empty");
+        if (!toolField.first.IsScalar()) throw ContractError("Tool key in 'tools' must be a scalar");
+        const auto toolId = toolField.first.as<std::string>();
+        if (toolId.empty()) throw ContractError("Tool key in 'tools' must not be empty");
         const auto& toolNode = toolField.second;
-        if (!toolNode.IsMap()) throw ContractError("Tool '" + regName + "' entry must be a mapping");
-        fields(toolNode, {"module", "definition"}, "Tool '" + regName + "'");
+        if (!toolNode.IsMap()) throw ContractError("Tool '" + toolId + "' entry must be a mapping");
+        fields(toolNode, {"module", "definition", "host_binding"}, "Tool '" + toolId + "'");
 
-        if (!toolNode["module"]) throw ContractError("Tool '" + regName + "' missing required field 'module'");
-        const auto modRef = text(toolNode["module"], "module", true);
-        if (modRef.empty()) throw ContractError("Tool '" + regName + "' module reference must not be empty");
+        ToolIndexEntry entry;
 
-        if (!result.modules.contains(modRef)) {
-            throw ContractError("Tool '" + regName + "' references undeclared module: '" + modRef + "'");
-        }
-
-        if (!toolNode["definition"]) throw ContractError("Tool '" + regName + "' missing required field 'definition'");
+        if (!toolNode["definition"]) throw ContractError("Tool '" + toolId + "' missing required field 'definition'");
         const auto defStr = text(toolNode["definition"], "definition", true);
-        if (defStr.empty()) throw ContractError("Tool '" + regName + "' definition path must not be empty");
+        if (defStr.empty()) throw ContractError("Tool '" + toolId + "' definition path must not be empty");
 
         const auto defPath = std::filesystem::path(std::u8string(reinterpret_cast<const char8_t*>(defStr.data()), defStr.size()));
         if (defPath.is_absolute() || defPath.has_root_name()) {
-            throw ContractError("Tool '" + regName + "' definition path must be relative: " + defStr);
+            throw ContractError("Tool '" + toolId + "' definition path must be relative: " + defStr);
         }
         const auto normDef = defPath.lexically_normal();
         if (!normDef.empty() && normDef.begin()->string() == "..") {
-            throw ContractError("Tool '" + regName + "' definition path escapes root: " + defStr);
+            throw ContractError("Tool '" + toolId + "' definition path escapes root: " + defStr);
+        }
+        entry.definition = defStr;
+
+        if (toolNode["module"]) {
+            entry.module = text(toolNode["module"], "module", true);
+            if (entry.module.empty()) throw ContractError("Tool '" + toolId + "' module reference must not be empty");
+            if (!result.modules.contains(entry.module)) {
+                throw ContractError("Tool '" + toolId + "' references undeclared module: '" + entry.module + "'");
+            }
         }
 
-        result.tools[regName] = ToolIndexEntry{modRef, defStr};
+        if (toolNode["host_binding"]) {
+            entry.hostBinding = text(toolNode["host_binding"], "host_binding", true);
+            if (entry.hostBinding.empty()) throw ContractError("Tool '" + toolId + "' host_binding must not be empty");
+        }
+
+        if (!entry.module.empty() && !entry.hostBinding.empty()) {
+            throw ContractError("Tool '" + toolId + "' cannot specify both 'module' and 'host_binding'");
+        }
+
+        result.tools[toolId] = std::move(entry);
     }
 
     std::unordered_set<std::string> referencedModules;
-    for (const auto& [toolName, toolEntry] : result.tools) {
-        referencedModules.insert(toolEntry.module);
+    for (const auto& [toolId, toolEntry] : result.tools) {
+        if (!toolEntry.module.empty()) {
+            referencedModules.insert(toolEntry.module);
+        }
     }
     for (const auto& [modName, modEntry] : result.modules) {
         if (!referencedModules.contains(modName)) {

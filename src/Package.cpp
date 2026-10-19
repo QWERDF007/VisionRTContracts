@@ -63,26 +63,50 @@ ToolsPackage readToolsPackage(const std::filesystem::path& packageRoot) {
 
     std::set<std::string> toolIds;
     package.tools.reserve(package.index.tools.size());
-    for (const auto& [registryName, toolEntry] : package.index.tools) {
+    for (const auto& [toolId, toolEntry] : package.index.tools) {
         PackageTool tool;
-        tool.registryName = registryName;
+        tool.toolId = toolId;
         const auto definitionPath = (package.root / utf8Path(toolEntry.definition)).lexically_normal();
         if (!std::filesystem::is_regular_file(definitionPath, error) || error) {
-            throw ContractError("Tool '" + registryName + "' definition file does not exist: " + pathText(definitionPath));
+            throw ContractError("Tool '" + toolId + "' definition file does not exist: " + pathText(definitionPath));
         }
         tool.definition = parseToolDefinitionFile(definitionPath, builtinDeclaration(utf8Path(toolEntry.definition)));
-        if (tool.definition.registryName != registryName) {
-            throw ContractError("Tool '" + registryName + "' definition registry_name '" + tool.definition.registryName +
-                                "' does not match index tool key");
+        if (tool.definition.id != toolId) {
+            throw ContractError("Tool definition id '" + tool.definition.id +
+                                "' does not match index tool_id '" + toolId + "'");
         }
-        tool.toolId = tool.definition.id;
+        tool.registryName = tool.definition.registryName;
+        tool.hostBinding = toolEntry.hostBinding;
         if (!toolIds.insert(tool.toolId).second) {
             throw ContractError("Duplicate tool_id in package: '" + tool.toolId + "'");
         }
-        if (cppKind(tool.definition.kind)) {
+
+        if (!tool.hostBinding.empty()) {
+            if (!toolEntry.module.empty()) {
+                throw ContractError("Tool '" + toolId + "' cannot specify both module and host_binding");
+            }
+            if (tool.definition.kind == ToolKind::PythonFunction || tool.definition.kind == ToolKind::PythonClass) {
+                throw ContractError("Python tool '" + toolId + "' cannot specify host_binding");
+            }
+        } else if (cppKind(tool.definition.kind)) {
+            if (toolEntry.module.empty()) {
+                throw ContractError("C++ domain tool '" + toolId + "' must reference a module");
+            }
             tool.moduleLibrary = (package.root /
                 utf8Path(package.index.modules.at(toolEntry.module).library)).lexically_normal();
+        } else if (tool.definition.kind == ToolKind::PythonFunction || tool.definition.kind == ToolKind::PythonClass) {
+            if (!toolEntry.module.empty()) {
+                throw ContractError("Python tool '" + toolId + "' cannot reference a module");
+            }
+            if (tool.definition.script.empty()) {
+                throw ContractError("Python tool '" + toolId + "' declaration missing script entry");
+            }
+            const auto scriptPath = (definitionPath.parent_path() / tool.definition.script).lexically_normal();
+            if (!std::filesystem::is_regular_file(scriptPath, error) || error) {
+                throw ContractError("Python tool '" + toolId + "' script file does not exist: " + pathText(scriptPath));
+            }
         }
+
         package.tools.push_back(std::move(tool));
     }
 

@@ -72,7 +72,8 @@ tool_id: test.cli.fail
         # 2. Module index validation (--index)
         valid_index_yaml = base_dir / "module_index.yaml"
         valid_index_yaml.write_text(
-            """variant: cpu
+            """schema_version: 2
+variant: cpu
 modules:
   mod_test:
     library: bin/mod_test.dll
@@ -90,7 +91,8 @@ runtime_files: []
         # 2b. Negative index: dangling module
         dangling_index_yaml = base_dir / "dangling_index.yaml"
         dangling_index_yaml.write_text(
-            """variant: cpu
+            """schema_version: 2
+variant: cpu
 modules:
   mod_test:
     library: bin/mod_test.dll
@@ -107,7 +109,8 @@ tools:
         # 2c. Negative index: duplicate key
         dup_key_yaml = base_dir / "dup_key_index.yaml"
         dup_key_yaml.write_text(
-            """variant: cpu
+            """schema_version: 2
+variant: cpu
 variant: gpu
 modules: {}
 tools: {}
@@ -143,7 +146,8 @@ outputs: []
 
         pkg_index_yaml = pkg_dir / "module_index.yaml"
         pkg_index_yaml.write_text(
-            """variant: cpu
+            """schema_version: 2
+variant: cpu
 modules:
   mod_test:
     library: bin/mod_test.dll
