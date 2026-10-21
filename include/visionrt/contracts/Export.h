@@ -1,7 +1,7 @@
 #pragma once
 
 #if defined(_WIN32) || defined(__CYGWIN__)
-    #if defined(VISIONRT_TOOL_SDK_EXPORTS)
+    #if defined(VISIONRT_CONTRACTS_EXPORTS) || defined(VISIONRT_TOOL_SDK_EXPORTS)
         #define VT_EXPORT __declspec(dllexport)
     #else
         #define VT_EXPORT
