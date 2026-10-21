@@ -6,7 +6,7 @@
 
 namespace visionrt {
 
-constexpr std::uint32_t MODULE_ABI_MAJOR = 1;
+constexpr std::uint32_t MODULE_ABI_MAJOR = 2;
 
 struct ModuleApi {
     std::uint32_t abi_major;

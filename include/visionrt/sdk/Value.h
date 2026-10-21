@@ -18,7 +18,7 @@
 
 namespace visionrt {
 
-enum class Type { Int, Float, Bool, String, ImageBatch, NumericArray, StringArray, RoiBatch };
+enum class Type { Int, Float, Bool, String, ImageBatch, NumericArray, StringArray, RoiBatch, Rect };
 enum class DType { UInt8, Int32, Int64, Float32, Float64, Bool };
 enum class Layout { Dense, BatchRagged };
 
@@ -204,7 +204,7 @@ private:
 };
 
 using PortValue = std::variant<Missing, std::int64_t, double, bool, Utf8,
-                               ImageBatch, NumericArray, StringArray, RoiBatch>;
+                               ImageBatch, NumericArray, StringArray, RoiBatch, Roi>;
 VT_EXPORT bool isMissing(const PortValue& value) noexcept;
 // Configuration equality compares array/ROI contents, not shared owner addresses.
 // Nonempty images compare the backing pixels and view identity, without pixel scans.

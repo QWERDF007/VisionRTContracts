@@ -36,6 +36,7 @@ struct PortDefinition {
     std::string colorOrder;
     std::string sameGeometryAsInput;
     std::optional<PortTypeReference> typeFrom;
+    std::string pathModeFrom;
 };
 
 struct ToolDefinition {

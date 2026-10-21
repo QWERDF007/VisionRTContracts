@@ -115,7 +115,7 @@ std::vector<PortDefinition> parsePorts(const YAML::Node& node, const std::string
             fields(item, {"id", "name", "type", "type_from", "dtype", "rank", "layout", "image_port", "display"}, direction);
         } else {
             fields(item, {"id", "name", "type", "dtype", "rank", "layout", "default", "editor", "min", "max",
-                "step", "decimals", "options", "options_provider", "tab", "group", "image_input"}, direction);
+                "step", "decimals", "options", "options_provider", "tab", "group", "image_input", "path_mode_from"}, direction);
         }
         PortDefinition port;
         port.id = text(item["id"], direction + ".id", false);
@@ -133,6 +133,7 @@ std::vector<PortDefinition> parsePorts(const YAML::Node& node, const std::string
             }
             if (item["default"]) port.defaultValue = decodeValue(item["default"], port.type);
             if (item["editor"]) port.editor = text(item["editor"], "editor");
+            if (item["path_mode_from"]) port.pathModeFrom = text(item["path_mode_from"], "path_mode_from", false);
             if (item["tab"]) port.tab = text(item["tab"], "tab");
             if (item["group"]) port.group = text(item["group"], "group");
             if (item["min"]) port.minimum = decodeValue(item["min"], port.type);

@@ -59,7 +59,7 @@ def main():
 
     try:
         install_prefix = temp_dir / "installed_sdk"
-        consumer_src = temp_dir / "consumer_src"
+        consumer_src = Path(__file__).resolve().parent / "installed_consumer"
         consumer_build = temp_dir / "consumer_build"
 
         # 1. Install SDK
@@ -68,78 +68,6 @@ def main():
 
         assert (install_prefix / "include" / "visionrt" / "sdk" / "Value.h").is_file(), "Value.h not installed"
         assert (install_prefix / "lib" / "cmake" / "VisionRTToolSDK" / "VisionRTToolSDKConfig.cmake").is_file(), "Config not installed"
-
-        # 2. Setup standalone consumer project
-        consumer_src.mkdir(parents=True, exist_ok=True)
-        cmakelists_content = """cmake_minimum_required(VERSION 3.25)
-project(StandaloneConsumer LANGUAGES CXX)
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-find_package(VisionRTToolSDK CONFIG REQUIRED)
-
-add_executable(consumer_bin main.cpp)
-target_link_libraries(consumer_bin PRIVATE VisionRT::ToolSDK)
-if(MSVC)
-    target_compile_options(consumer_bin PRIVATE /UNDEBUG)
-else()
-    target_compile_options(consumer_bin PRIVATE -UNDEBUG)
-endif()
-
-# Also verify imported executable target exists
-if(NOT TARGET VisionRT::visionrt_validate_tool)
-    message(FATAL_ERROR "Imported target VisionRT::visionrt_validate_tool not found!")
-endif()
-"""
-        if args.python_interop:
-            cmakelists_content += "\ntarget_link_libraries(consumer_bin PRIVATE VisionRT::PythonInterop)\n"
-        else:
-            cmakelists_content += "\nif(TARGET VisionRT::PythonInterop)\nmessage(FATAL_ERROR \"Core-only SDK unexpectedly exports PythonInterop\")\nendif()\n"
-        (consumer_src / "CMakeLists.txt").write_text(cmakelists_content, encoding="utf-8")
-
-        main_cpp_content = """#include <visionrt/sdk/Value.h>
-#include <visionrt/sdk/Schema.h>
-#include <iostream>
-
-int main() {
-    using namespace visionrt;
-    PortValue val{std::int64_t{42}};
-    if (std::holds_alternative<std::int64_t>(val) && std::get<std::int64_t>(val) == 42) {
-        std::cout << "[Standalone Consumer] Successfully verified installed VisionRTToolSDK!" << std::endl;
-        return 0;
-    }
-    return 1;
-}
-"""
-        if args.python_interop:
-            main_cpp_content = """#include <visionrt/sdk/PythonInterop.h>
-#include <visionrt/sdk/Schema.h>
-#include <pybind11/embed.h>
-#include <iostream>
-
-int main() {
-    visionrt::PortValue result;
-    {
-        pybind11::scoped_interpreter interpreter;
-        auto scope = pybind11::dict();
-        {
-            auto image = cv::Mat(3, 4, CV_8UC1, cv::Scalar(17));
-            visionrt::PortValue input = visionrt::ImageBatch({visionrt::OwnedImage::copyOf(image)});
-            scope["images"] = visionrt::toPythonReadonly(input);
-        }
-        pybind11::exec("assert images[0].shape == (3, 4)\\nassert not images[0].flags.writeable\\nassert int(images[0][2, 3]) == 17", scope);
-        result = visionrt::fromPython({visionrt::Type::ImageBatch}, scope["images"]);
-        scope["labels"] = visionrt::toPythonReadonly(visionrt::StringArray(1, visionrt::Layout::Dense,
-            {visionrt::StringBuffer({2}, {"cat", "dog"})}));
-        pybind11::exec("assert labels.tolist() == ['cat', 'dog']\\nassert not labels.flags.writeable", scope);
-    }
-    const auto& image = std::get<visionrt::ImageBatch>(result).images()[0];
-    if (image.rows() != 3 || image.cols() != 4 || image.data()[0] != 17) return 1;
-    std::cout << "[Standalone Consumer] Installed PythonInterop and C++ ownership verified!" << std::endl;
-    return 0;
-}
-"""
-        (consumer_src / "main.cpp").write_text(main_cpp_content, encoding="utf-8")
 
         # 3. Configure consumer with CMAKE_PREFIX_PATH
         prefix_paths = [str(install_prefix)]
@@ -162,8 +90,14 @@ int main() {
             "-S", str(consumer_src),
             "-G", "Ninja",
             f"-DCMAKE_BUILD_TYPE={args.config}",
+            f"-DEXPECT_PYTHON_INTEROP={'ON' if args.python_interop else 'OFF'}",
             f"-DCMAKE_PREFIX_PATH={prefix_arg}"
         ]
+        config_cmd.extend([
+            f"-DVisionRTToolSDK_DIR={install_prefix / 'lib' / 'cmake' / 'VisionRTToolSDK'}",
+            "-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF",
+            "-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF",
+        ])
         if args.make_program:
             config_cmd.append(f"-DCMAKE_MAKE_PROGRAM={args.make_program}")
         if args.cxx_compiler:
@@ -172,6 +106,7 @@ int main() {
             config_cmd.append(f"-Dpybind11_DIR={args.pybind11_dir}")
         if args.python_root:
             config_cmd.append(f"-DPython3_ROOT_DIR={args.python_root}")
+            config_cmd.append(f"-DPython3_EXECUTABLE={Path(args.python_root) / ('python.exe' if os.name == 'nt' else 'python3')}")
 
         run_cmd(config_cmd)
 
@@ -185,20 +120,23 @@ int main() {
             bin_path = consumer_build / args.config / "consumer_bin.exe"
         assert bin_path.is_file(), f"Consumer binary not found at {bin_path}"
 
-        extra_env = {}
+        runtime_paths = ([str(Path(os.environ["SystemRoot"]) / "System32"), os.environ["SystemRoot"]]
+                         if os.name == "nt" else os.get_exec_path())
+        extra_env = {"PYTHONPATH": ""}
         if args.opencv_bin and Path(args.opencv_bin).is_dir():
-            extra_env["PATH"] = str(Path(args.opencv_bin).resolve()) + os.pathsep + os.environ.get("PATH", "")
+            runtime_paths.insert(0, str(Path(args.opencv_bin).resolve()))
         else:
             for p in prefix_paths:
                 p_obj = Path(p)
                 for bin_cand in [p_obj / "bin", p_obj.parent / "bin", p_obj]:
                     if (bin_cand / "opencv_world480.dll").is_file():
-                        extra_env["PATH"] = str(bin_cand) + os.pathsep + os.environ.get("PATH", "")
+                        runtime_paths.insert(0, str(bin_cand))
                         break
 
         if args.python_interop and args.python_root:
             extra_env["PYTHONHOME"] = args.python_root
-            extra_env["PATH"] = args.python_root + os.pathsep + extra_env.get("PATH", os.environ.get("PATH", ""))
+            runtime_paths.insert(0, args.python_root)
+        extra_env["PATH"] = os.pathsep.join(runtime_paths)
         print("[Install Test] Running consumer binary...")
         res = run_cmd([str(bin_path)], env=extra_env)
         print(res.stdout)

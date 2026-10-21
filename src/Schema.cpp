@@ -66,7 +66,8 @@ void validatePorts(const std::vector<PortDefinition>& ports, const std::string& 
             if (!output || isStatus) throw ContractError("type_from requires a business output: " + port.id);
             if (!isMissing(port.defaultValue) || !port.editor.empty() || port.minimum || port.maximum || port.step
                 || port.decimals || !port.options.empty() || !port.optionsProvider.empty() || !port.imageInput.empty()
-                || !port.imagePort.empty() || !port.colorOrder.empty() || !port.sameGeometryAsInput.empty())
+                || !port.imagePort.empty() || !port.colorOrder.empty() || !port.sameGeometryAsInput.empty()
+                || !port.pathModeFrom.empty())
                 throw ContractError("type_from cannot have concrete value or display attributes: " + port.id);
             continue;
         }
@@ -88,11 +89,16 @@ void validatePorts(const std::vector<PortDefinition>& ports, const std::string& 
         }
 
         if (!port.editor.empty()) {
-            const std::set<std::string> validEditors = {"number", "text", "bool", "file", "directory", "array", "roi"};
+            const std::set<std::string> validEditors = {"number", "text", "bool", "file", "directory", "path", "array", "roi"};
             if (!validEditors.contains(port.editor)) {
                 throw ContractError("Unknown editor: " + port.editor + " on port " + port.id);
             }
         }
+
+        if (!port.pathModeFrom.empty() && (output || port.editor != "path"))
+            throw ContractError("path_mode_from requires a path editor: " + port.id);
+        if (port.editor == "path" && (port.type != TypeSpec{Type::String} || port.pathModeFrom.empty()))
+            throw ContractError("path editor requires a String port and path_mode_from: " + port.id);
 
         if (!port.tab.empty()) {
             const std::set<std::string> validTabs = {"基本输入", "预处理", "检测", "结果处理"};
@@ -168,14 +174,14 @@ void validatePorts(const std::vector<PortDefinition>& ports, const std::string& 
         }
 
         if (!port.imageInput.empty()) {
-            if (direction != "inputs" || port.type.type != Type::RoiBatch) {
-                throw ContractError("image_input requires a RoiBatch input: " + port.id);
+            if (direction != "inputs" || (port.type.type != Type::RoiBatch && port.type.type != Type::Rect)) {
+                throw ContractError("image_input requires a RoiBatch or Rect input: " + port.id);
             }
         }
 
         if (!port.imagePort.empty()) {
-            if (port.type.type != Type::RoiBatch) {
-                throw ContractError("image_port requires a RoiBatch output: " + port.id);
+            if (port.type.type != Type::RoiBatch && port.type.type != Type::Rect) {
+                throw ContractError("image_port requires a RoiBatch or Rect output: " + port.id);
             }
         }
 
@@ -248,6 +254,14 @@ void validateToolDefinition(const ToolDefinition& def) {
             throw ContractError(std::string(context) + " must reference an ImageBatch port: " + id);
         }
     };
+
+    for (const auto* ports : {&def.initParams, &def.inputs})
+        for (const auto& port : *ports) {
+            if (port.pathModeFrom.empty()) continue;
+            const auto* mode = findPort(*ports, port.pathModeFrom);
+            if (!mode || mode->id == port.id || mode->type != TypeSpec{Type::String})
+                throw ContractError("path_mode_from must reference another String parameter: " + port.id);
+        }
 
     for (const auto& port : def.inputs) {
         checkImageRef(def.inputs, port.imageInput, "image_input");

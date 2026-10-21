@@ -7,7 +7,7 @@
 
 namespace visionrt {
 namespace {
-constexpr std::array typeNames{"Int", "Float", "Bool", "String", "ImageBatch", "NumericArray", "StringArray", "RoiBatch"};
+constexpr std::array typeNames{"Int", "Float", "Bool", "String", "ImageBatch", "NumericArray", "StringArray", "RoiBatch", "Rect"};
 constexpr std::array dtypeNames{"uint8", "int32", "int64", "float32", "float64", "bool"};
 
 void mapping(const YAML::Node& node, const char* description) {
@@ -118,6 +118,14 @@ YAML::Node encodeStringBuffer(const StringBuffer& buffer) {
 }
 } // namespace
 
+const char* typeName(Type type) {
+    return typeNames.at(static_cast<std::size_t>(type));
+}
+
+const char* dtypeName(DType dtype) {
+    return dtypeNames.at(static_cast<std::size_t>(dtype));
+}
+
 TypeSpec decodeTypeSpec(const YAML::Node& node) {
     mapping(node, "TypeSpec");
     TypeSpec type;
@@ -142,9 +150,9 @@ TypeSpec decodeTypeSpec(const YAML::Node& node) {
 YAML::Node encodeTypeSpec(const TypeSpec& type) {
     validateTypeSpec(type);
     YAML::Node node(YAML::NodeType::Map);
-    node["type"] = typeNames[static_cast<std::size_t>(type.type)];
+    node["type"] = typeName(type.type);
     if (type.type == Type::NumericArray || type.type == Type::StringArray) {
-        if (type.dtype) node["dtype"] = dtypeNames[static_cast<std::size_t>(*type.dtype)];
+        if (type.dtype) node["dtype"] = dtypeName(*type.dtype);
         node["rank"] = type.rank;
         node["layout"] = type.layout == Layout::Dense ? "dense" : "batch_ragged";
     }
@@ -181,6 +189,15 @@ PortValue decodeValue(const YAML::Node& node, const TypeSpec& type) {
             for (const auto& buffer : node) buffers.push_back(decodeStringBuffer(buffer, type.rank - 1));
         }
         return StringArray(type.rank, type.layout, std::move(buffers));
+    }
+    case Type::Rect: {
+        sequence(node, "Rect encoding");
+        std::vector<float> encoded;
+        encoded.reserve(node.size());
+        for (const auto& element : node) encoded.push_back(number<float>(element));
+        PortValue rectangle = Roi::decode(encoded);
+        validateValue(type, rectangle);
+        return rectangle;
     }
     case Type::RoiBatch: {
         sequence(node, "ROI batch");
@@ -227,6 +244,11 @@ YAML::Node encodeValue(const PortValue& value, const TypeSpec& type) {
         if (type.layout == Layout::Dense) return encodeStringBuffer(buffers[0]);
         YAML::Node node(YAML::NodeType::Sequence);
         for (const auto& buffer : buffers) node.push_back(encodeStringBuffer(buffer));
+        return node;
+    }
+    case Type::Rect: {
+        auto node = encodeElements(std::get<Roi>(value).encoded());
+        node.SetStyle(YAML::EmitterStyle::Flow);
         return node;
     }
     case Type::RoiBatch: {

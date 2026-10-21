@@ -10,6 +10,15 @@ else()
     set(_opencv_bin_dir "")
 endif()
 
+if(TARGET VisionRTPythonInterop)
+    add_executable(test_rect_interop test_rect_interop.cpp)
+    target_link_libraries(test_rect_interop PRIVATE VisionRT::PythonInterop)
+    add_test(NAME test_rect_interop COMMAND test_rect_interop)
+    get_filename_component(_rect_python_root "${Python3_EXECUTABLE}" DIRECTORY)
+    set_tests_properties(test_rect_interop PROPERTIES ENVIRONMENT_MODIFICATION
+        "PATH=path_list_prepend:${_opencv_bin_dir};PATH=path_list_prepend:${_rect_python_root}")
+endif()
+
 # 1. test_sdk_value_contract
 add_executable(test_sdk_value_contract test_sdk_value_contract.cpp)
 target_link_libraries(test_sdk_value_contract PRIVATE VisionRT::ToolSDK)

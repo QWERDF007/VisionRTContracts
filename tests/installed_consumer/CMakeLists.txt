@@ -1,0 +1,26 @@
+cmake_minimum_required(VERSION 3.25)
+project(StandaloneConsumer LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+option(EXPECT_PYTHON_INTEROP "Consume the installed optional Python bridge" OFF)
+
+find_package(VisionRTToolSDK CONFIG REQUIRED)
+if(NOT TARGET VisionRT::visionrt_validate_tool)
+    message(FATAL_ERROR "Imported target VisionRT::visionrt_validate_tool not found")
+endif()
+
+add_executable(consumer_bin main.cpp)
+target_link_libraries(consumer_bin PRIVATE VisionRT::ToolSDK)
+if(EXPECT_PYTHON_INTEROP)
+    target_link_libraries(consumer_bin PRIVATE VisionRT::PythonInterop)
+    target_compile_definitions(consumer_bin PRIVATE EXPECT_PYTHON_INTEROP)
+elseif(TARGET VisionRT::PythonInterop)
+    message(FATAL_ERROR "Core-only SDK unexpectedly exports PythonInterop")
+endif()
+
+if(MSVC)
+    target_compile_options(consumer_bin PRIVATE /UNDEBUG /utf-8)
+else()
+    target_compile_options(consumer_bin PRIVATE -UNDEBUG)
+endif()

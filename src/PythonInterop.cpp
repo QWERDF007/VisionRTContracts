@@ -293,6 +293,14 @@ OwnedImage imageCopy(py::handle value) {
     return OwnedImage::take(std::move(destination));
 }
 
+Roi roiCopy(py::handle value) {
+    auto array = requireArray(value, 1, true);
+    if (!array.dtype().equal(py::dtype::of<float>())) throw ContractError("ROI dtype must be float32");
+    auto shape = checkedShape(array);
+    validateStorage(array, 0, static_cast<py::ssize_t>(checkedByteCount(shape, sizeof(float))));
+    return Roi::decode({static_cast<const float*>(array.data()), checkedElementCount(shape)});
+}
+
 } // namespace
 
 py::object toPythonReadonly(const PortValue& value) {
@@ -327,6 +335,11 @@ py::object toPythonReadonly(const PortValue& value) {
             py::list buffers;
             for (const auto& buffer : item.buffers()) buffers.append(view(buffer));
             return buffers;
+        } else if constexpr (std::is_same_v<T, Roi>) {
+            validateValue({Type::Rect}, item);
+            return readonlyArray(py::dtype::of<float>(),
+                {static_cast<py::ssize_t>(item.encoded().size())}, {sizeof(float)},
+                item.encoded().data(), item.owner());
         } else {
             py::list images;
             for (const auto& image : item.images()) {
@@ -378,16 +391,17 @@ PortValue fromPython(const TypeSpec& expected, py::handle value) {
             buffers.push_back(stringCopy(buffer, expected.rank - 1));
         return StringArray(expected.rank, expected.layout, std::move(buffers));
     }
+    case Type::Rect: {
+        PortValue rectangle = roiCopy(value);
+        validateValue(expected, rectangle);
+        return rectangle;
+    }
     case Type::RoiBatch: {
         std::vector<std::vector<Roi>> images;
         for (auto image : requireList(value, "RoiBatch")) {
             std::vector<Roi> rois;
             for (auto roiItem : requireList(image, "RoiBatch image")) {
-                auto array = requireArray(roiItem, 1, true);
-                if (!array.dtype().equal(py::dtype::of<float>())) throw ContractError("ROI dtype must be float32");
-                auto shape = checkedShape(array);
-                validateStorage(array, 0, static_cast<py::ssize_t>(checkedByteCount(shape, sizeof(float))));
-                rois.push_back(Roi::decode({static_cast<const float*>(array.data()), checkedElementCount(shape)}));
+                rois.push_back(roiCopy(roiItem));
             }
             images.push_back(std::move(rois));
         }

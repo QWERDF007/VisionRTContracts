@@ -5,11 +5,13 @@
 #include <visionrt/sdk/Value.h>
 #include <visionrt/sdk/ValueYaml.h>
 #include <visionrt/sdk/Schema.h>
+#include <visionrt/sdk/SchemaYaml.h>
 
 #include <array>
 #include <cassert>
 #include <cmath>
 #include <limits>
+#include <iostream>
 #include <stdexcept>
 #include <vector>
 
@@ -29,7 +31,24 @@ NumericBuffer numeric(DType dtype, std::vector<std::int64_t> shape,
 }
 }
 
-int main() {
+int main() try {
+    const auto rectType = decodeTypeSpec(YAML::Load("{type: Rect}"));
+    const auto rectValue = decodeValue(YAML::Load("[2, 1.25, -2.5, 3.75, 4.5, 17.5]"), rectType);
+    assert(std::get<Roi>(rectValue).kind() == RoiKind::Rectangle);
+    assert(equalValues(rectValue, Roi::rectangle(1.25F, -2.5F, 3.75F, 4.5F, 17.5F)));
+    assert(typeOf(rectValue) == rectType);
+    assert(encodeTypeSpec(rectType)["type"].as<std::string>() == "Rect");
+    assert(std::string_view(typeName(Type::Rect)) == "Rect");
+    assert(std::string_view(dtypeName(DType::Float64)) == "float64");
+    rejects([] { (void)typeName(static_cast<Type>(999)); });
+    assert(equalValues(decodeValue(encodeValue(rectValue, rectType), rectType), rectValue));
+    validateValue(rectType, Missing{});
+    rejects([&] { (void)decodeValue(YAML::Load("[3, 1, 2, 3]"), rectType); });
+    rejects([&] { (void)decodeValue(YAML::Load("[[[2, 1, 2, 3, 4, 0]]]"), rectType); });
+    rejects([&] { (void)decodeValue(YAML::Load("[2, 0, 0, 0, 4, 0]"), rectType); });
+    rejects([&] { validateValue(rectType, RoiBatch{}); });
+    rejects([&] { validateValue(rectType, Roi::circle(1, 2, 3)); });
+
     const TypeSpec scoresType{Type::NumericArray, DType::Float32, 2, Layout::BatchRagged};
     assert(!compatible(scoresType, {Type::NumericArray, DType::Float32, 2, Layout::Dense}));
     assert(!compatible(scoresType, {Type::NumericArray, DType::Float32, 3, Layout::BatchRagged}));
@@ -191,6 +210,19 @@ int main() {
                              std::nullopt, std::nullopt, std::nullopt, std::nullopt, {}, "", "", "", "BGR", "in_img"});
     validateToolDefinition(valid);
 
+    {
+        auto geometryTool = valid;
+        PortDefinition input{"rect", "Rectangle", {Type::Rect}};
+        input.imageInput = "in_img";
+        geometryTool.inputs.push_back(input);
+        PortDefinition output{"rect", "Rectangle", {Type::Rect}};
+        output.imagePort = "out_img";
+        geometryTool.outputs.push_back(output);
+        validateToolDefinition(geometryTool);
+        geometryTool.inputs.back().imageInput = "threshold";
+        rejects([&] { validateToolDefinition(geometryTool); });
+    }
+
     // Negative tests
     // 1. bad schemaVersion
     {
@@ -279,5 +311,42 @@ int main() {
         rejects([&] { validateToolDefinition(bad); });
     }
 
+    const auto pathEditor = parseToolDefinitionYaml(
+        "schema_version: 1\ntool_id: test.path\ndisplay_name: Path\nversion: 1.0.0\n"
+        "kind: cpp_function\nentry: {registry_name: test.path}\ninit_params: []\n"
+        "inputs:\n  - {id: mode, name: Mode, type: String, default: file, options: [file, directory]}\n"
+        "  - {id: path, name: Path, type: String, editor: path, path_mode_from: mode}\noutputs: []\n");
+    assert(pathEditor.inputs[1].editor == "path");
+    assert(pathEditor.inputs[1].pathModeFrom == "mode");
+    {
+        auto invalid = pathEditor;
+        invalid.inputs[1].pathModeFrom = "missing";
+        rejects([&] { validateToolDefinition(invalid); });
+        invalid.inputs[1].pathModeFrom = "path";
+        rejects([&] { validateToolDefinition(invalid); });
+        invalid.inputs[1].pathModeFrom = "mode";
+        invalid.inputs[1].editor = "file";
+        rejects([&] { validateToolDefinition(invalid); });
+        invalid = pathEditor;
+        invalid.inputs[0].type = {Type::Int};
+        invalid.inputs[0].defaultValue = std::int64_t{0};
+        invalid.inputs[0].options.clear();
+        rejects([&] { validateToolDefinition(invalid); });
+        invalid = pathEditor;
+        invalid.inputs[1].pathModeFrom.clear();
+        rejects([&] { validateToolDefinition(invalid); });
+    }
+    {
+        auto initialization = pathEditor;
+        initialization.kind = ToolKind::CppClass;
+        initialization.initParams = std::move(initialization.inputs);
+        initialization.inputs.clear();
+        validateToolDefinition(initialization);
+    }
+
     return 0;
+}
+catch (const std::exception& error) {
+    std::cerr << error.what() << '\n';
+    return 1;
 }

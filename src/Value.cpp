@@ -101,7 +101,7 @@ void validateTypeSpec(const TypeSpec& type) {
     }
     switch (type.type) {
     case Type::Int: case Type::Float: case Type::Bool: case Type::String:
-    case Type::ImageBatch: case Type::RoiBatch: break;
+    case Type::ImageBatch: case Type::RoiBatch: case Type::Rect: break;
     default: throw ContractError("Unknown port type");
     }
     if (type.dtype || type.rank != -1 || type.layout != Layout::Dense)
@@ -356,6 +356,8 @@ bool equalValues(const PortValue& left, const PortValue& right) {
                 }
             }
             return true;
+        } else if constexpr (std::is_same_v<T, Roi>) {
+            return std::ranges::equal(a.encoded(), b.encoded());
         } else if constexpr (std::is_same_v<T, RoiBatch>) {
             if (a.images().size() != b.images().size()) return false;
             for (std::size_t i = 0; i < a.images().size(); ++i) {
@@ -394,7 +396,12 @@ std::optional<TypeSpec> typeOf(const PortValue& value) {
             return TypeSpec{Type::NumericArray, item.dtype(), item.rank(), item.layout()};
         else if constexpr (std::is_same_v<T, StringArray>)
             return TypeSpec{Type::StringArray, {}, item.rank(), item.layout()};
-        else return TypeSpec{Type::RoiBatch};
+        else if constexpr (std::is_same_v<T, RoiBatch>) return TypeSpec{Type::RoiBatch};
+        else {
+            if (item.kind() != RoiKind::Rectangle)
+                throw ContractError("Rect requires a rectangle geometry");
+            return TypeSpec{Type::Rect};
+        }
     }, value);
 }
 
