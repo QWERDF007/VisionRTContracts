@@ -1,5 +1,5 @@
-#include "visionrt/sdk/SchemaYaml.h"
-#include "visionrt/sdk/ValueYaml.h"
+#include "visionrt/contracts/SchemaYaml.h"
+#include "visionrt/contracts/ValueYaml.h"
 
 #include <algorithm>
 #include <cmath>

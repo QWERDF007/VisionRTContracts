@@ -1,6 +1,6 @@
-#include <visionrt/sdk/Package.h>
-#include <visionrt/sdk/Schema.h>
-#include <visionrt/sdk/SchemaYaml.h>
+#include <visionrt/contracts/Package.h>
+#include <visionrt/contracts/Schema.h>
+#include <visionrt/contracts/SchemaYaml.h>
 #include <iostream>
 #include <fstream>
 #include <filesystem>

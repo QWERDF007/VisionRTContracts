@@ -1,7 +1,7 @@
 #pragma once
 
-#include "visionrt/sdk/Export.h"
-#include "visionrt/sdk/Tool.h"
+#include "visionrt/contracts/Export.h"
+#include "visionrt/contracts/Tool.h"
 #include <cstdint>
 
 namespace visionrt {

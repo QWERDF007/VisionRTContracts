@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test isolated installation of VisionRTToolSDK.
+Test isolated installation of VisionRTContracts.
 Installs SDK to a temporary directory, then builds and runs a standalone consumer project
 using CMAKE_PREFIX_PATH, verifying clean decoupled packaging.
 """
@@ -67,7 +67,7 @@ def main():
         run_cmd([cmake_bin, "--install", str(build_dir), "--prefix", str(install_prefix), "--config", args.config])
 
         assert (install_prefix / "include" / "visionrt" / "sdk" / "Value.h").is_file(), "Value.h not installed"
-        assert (install_prefix / "lib" / "cmake" / "VisionRTToolSDK" / "VisionRTToolSDKConfig.cmake").is_file(), "Config not installed"
+        assert (install_prefix / "lib" / "cmake" / "VisionRTContracts" / "VisionRTContractsConfig.cmake").is_file(), "Config not installed"
 
         # 3. Configure consumer with CMAKE_PREFIX_PATH
         prefix_paths = [str(install_prefix)]
@@ -94,7 +94,7 @@ def main():
             f"-DCMAKE_PREFIX_PATH={prefix_arg}"
         ]
         config_cmd.extend([
-            f"-DVisionRTToolSDK_DIR={install_prefix / 'lib' / 'cmake' / 'VisionRTToolSDK'}",
+            f"-DVisionRTContracts_DIR={install_prefix / 'lib' / 'cmake' / 'VisionRTContracts'}",
             "-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF",
             "-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF",
         ])

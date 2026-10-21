@@ -1,6 +1,6 @@
 #pragma once
 
-#include "visionrt/sdk/Value.h"
+#include "visionrt/contracts/Value.h"
 
 #include <pybind11/pybind11.h>
 

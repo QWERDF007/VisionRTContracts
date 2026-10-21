@@ -1,6 +1,6 @@
 #pragma once
 
-#include "visionrt/sdk/Export.h"
+#include "visionrt/contracts/Export.h"
 #include <opencv2/core.hpp>
 
 #include <array>

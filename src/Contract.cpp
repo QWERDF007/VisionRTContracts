@@ -1,4 +1,4 @@
-#include "visionrt/sdk/Contract.h"
+#include "visionrt/contracts/Contract.h"
 #include <algorithm>
 
 namespace visionrt {

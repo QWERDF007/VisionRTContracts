@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(EXPECT_PYTHON_INTEROP "Consume the installed optional Python bridge" OFF)
 
-find_package(VisionRTToolSDK CONFIG REQUIRED)
+find_package(VisionRTContracts CONFIG REQUIRED)
 if(NOT TARGET VisionRT::visionrt_validate_tool)
     message(FATAL_ERROR "Imported target VisionRT::visionrt_validate_tool not found")
 endif()

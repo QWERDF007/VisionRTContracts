@@ -1,4 +1,4 @@
-#include "visionrt/sdk/ValueYaml.h"
+#include "visionrt/contracts/ValueYaml.h"
 
 #include <array>
 #include <cmath>

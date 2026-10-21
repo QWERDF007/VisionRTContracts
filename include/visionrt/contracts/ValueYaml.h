@@ -1,6 +1,6 @@
 #pragma once
 
-#include "visionrt/sdk/Value.h"
+#include "visionrt/contracts/Value.h"
 #include <yaml-cpp/yaml.h>
 
 namespace visionrt {

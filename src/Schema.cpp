@@ -1,4 +1,4 @@
-#include "visionrt/sdk/Schema.h"
+#include "visionrt/contracts/Schema.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>

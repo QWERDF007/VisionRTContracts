@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(VisionRTToolSDK VERSION 0.1.0 LANGUAGES CXX)
+project(VisionRTContracts VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -53,7 +53,7 @@ if(NOT TARGET yaml-cpp::yaml-cpp)
     endif()
 endif()
 
-add_library(VisionRTToolSDK STATIC
+add_library(VisionRTContracts STATIC
     src/Contract.cpp
     src/Package.cpp
     src/Schema.cpp
@@ -61,29 +61,30 @@ add_library(VisionRTToolSDK STATIC
     src/Value.cpp
     src/ValueYaml.cpp
 )
-add_library(VisionRT::ToolSDK ALIAS VisionRTToolSDK)
-set_target_properties(VisionRTToolSDK PROPERTIES EXPORT_NAME ToolSDK)
+add_library(VisionRT::Contracts ALIAS VisionRTContracts)
+add_library(VisionRT::ToolSDK ALIAS VisionRTContracts)
+set_target_properties(VisionRTContracts PROPERTIES EXPORT_NAME Contracts)
 
-target_compile_features(VisionRTToolSDK PUBLIC cxx_std_20)
-target_compile_definitions(VisionRTToolSDK PUBLIC YAML_CPP_STATIC_DEFINE)
+target_compile_features(VisionRTContracts PUBLIC cxx_std_20)
+target_compile_definitions(VisionRTContracts PUBLIC YAML_CPP_STATIC_DEFINE)
 
-target_include_directories(VisionRTToolSDK
+target_include_directories(VisionRTContracts
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
         ${OpenCV_INCLUDE_DIRS}
 )
 
-target_link_libraries(VisionRTToolSDK PUBLIC opencv_core yaml-cpp::yaml-cpp)
+target_link_libraries(VisionRTContracts PUBLIC opencv_core yaml-cpp::yaml-cpp)
 
 if(MSVC)
-    target_compile_options(VisionRTToolSDK PUBLIC /utf-8)
+    target_compile_options(VisionRTContracts PUBLIC /utf-8)
 endif()
 
 add_executable(visionrt_validate_tool tools/visionrt_validate_tool.cpp)
 add_executable(VisionRT::visionrt_validate_tool ALIAS visionrt_validate_tool)
 set_target_properties(visionrt_validate_tool PROPERTIES EXPORT_NAME visionrt_validate_tool)
-target_link_libraries(visionrt_validate_tool PRIVATE VisionRTToolSDK)
+target_link_libraries(visionrt_validate_tool PRIVATE VisionRTContracts)
 
 if(MSVC)
     target_compile_options(visionrt_validate_tool PRIVATE /utf-8)
@@ -96,44 +97,45 @@ if(VISIONRT_BUILD_PYTHON_INTEROP)
         set(PYBIND11_FINDPYTHON ON)
         find_package(pybind11 CONFIG REQUIRED)
     endif()
-    add_library(VisionRTPythonInterop STATIC
+    add_library(VisionRTContractsPython STATIC
         src/PythonInterop.cpp
     )
-    add_library(VisionRT::PythonInterop ALIAS VisionRTPythonInterop)
-    set_target_properties(VisionRTPythonInterop PROPERTIES EXPORT_NAME PythonInterop)
+    add_library(VisionRT::ContractsPython ALIAS VisionRTContractsPython)
+    add_library(VisionRT::PythonInterop ALIAS VisionRTContractsPython)
+    set_target_properties(VisionRTContractsPython PROPERTIES EXPORT_NAME ContractsPython)
 
-    target_compile_features(VisionRTPythonInterop PUBLIC cxx_std_20)
-    target_include_directories(VisionRTPythonInterop
+    target_compile_features(VisionRTContractsPython PUBLIC cxx_std_20)
+    target_include_directories(VisionRTContractsPython
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
             $<INSTALL_INTERFACE:include>
     )
-    target_link_libraries(VisionRTPythonInterop PUBLIC VisionRTToolSDK pybind11::embed)
-    target_compile_definitions(VisionRTPythonInterop PUBLIC PYBIND11_DETAILED_ERROR_MESSAGES)
+    target_link_libraries(VisionRTContractsPython PUBLIC VisionRTContracts pybind11::embed)
+    target_compile_definitions(VisionRTContractsPython PUBLIC PYBIND11_DETAILED_ERROR_MESSAGES)
     if(BUILD_TESTING OR VISIONRT_ENABLE_TEST_PROBES)
-        target_compile_definitions(VisionRTPythonInterop PUBLIC VISIONRT_TEST_PROBES)
+        target_compile_definitions(VisionRTContractsPython PUBLIC VISIONRT_TEST_PROBES)
     endif()
     if(MSVC)
-        target_compile_options(VisionRTPythonInterop PUBLIC /utf-8)
+        target_compile_options(VisionRTContractsPython PUBLIC /utf-8)
     endif()
 endif()
 
-set(VISIONRT_TOOL_SDK_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include" CACHE PATH "VisionRT Tool SDK include directory")
+set(VISIONRT_CONTRACTS_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include" CACHE PATH "VisionRT Contracts include directory")
 if(NOT PROJECT_IS_TOP_LEVEL)
-    set(VISIONRT_TOOL_SDK_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include" PARENT_SCOPE)
+    set(VISIONRT_CONTRACTS_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include" PARENT_SCOPE)
 endif()
 
 if(PROJECT_IS_TOP_LEVEL)
     include(GNUInstallDirs)
     include(CMakePackageConfigHelpers)
 
-    set(_sdk_install_targets VisionRTToolSDK visionrt_validate_tool)
-    if(TARGET VisionRTPythonInterop)
-        list(APPEND _sdk_install_targets VisionRTPythonInterop)
+    set(_contracts_install_targets VisionRTContracts visionrt_validate_tool)
+    if(TARGET VisionRTContractsPython)
+        list(APPEND _contracts_install_targets VisionRTContractsPython)
     endif()
 
-    install(TARGETS ${_sdk_install_targets}
-        EXPORT VisionRTToolSDKTargets
+    install(TARGETS ${_contracts_install_targets}
+        EXPORT VisionRTContractsTargets
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
@@ -142,28 +144,28 @@ if(PROJECT_IS_TOP_LEVEL)
 
     install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
-    install(EXPORT VisionRTToolSDKTargets
-        FILE VisionRTToolSDKTargets.cmake
+    install(EXPORT VisionRTContractsTargets
+        FILE VisionRTContractsTargets.cmake
         NAMESPACE VisionRT::
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/VisionRTToolSDK
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/VisionRTContracts
     )
 
     configure_package_config_file(
-        cmake/VisionRTToolSDKConfig.cmake.in
-        ${CMAKE_CURRENT_BINARY_DIR}/VisionRTToolSDKConfig.cmake
-        INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/VisionRTToolSDK
+        cmake/VisionRTContractsConfig.cmake.in
+        ${CMAKE_CURRENT_BINARY_DIR}/VisionRTContractsConfig.cmake
+        INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/VisionRTContracts
     )
 
     write_basic_package_version_file(
-        ${CMAKE_CURRENT_BINARY_DIR}/VisionRTToolSDKConfigVersion.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/VisionRTContractsConfigVersion.cmake
         VERSION ${PROJECT_VERSION}
         COMPATIBILITY SameMajorVersion
     )
 
     install(FILES
-        ${CMAKE_CURRENT_BINARY_DIR}/VisionRTToolSDKConfig.cmake
-        ${CMAKE_CURRENT_BINARY_DIR}/VisionRTToolSDKConfigVersion.cmake
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/VisionRTToolSDK
+        ${CMAKE_CURRENT_BINARY_DIR}/VisionRTContractsConfig.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/VisionRTContractsConfigVersion.cmake
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/VisionRTContracts
     )
 
     include(CTest)

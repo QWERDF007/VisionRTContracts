@@ -2,7 +2,7 @@
 #undef NDEBUG
 #endif
 
-#include "visionrt/sdk/Package.h"
+#include "visionrt/contracts/Package.h"
 
 #include <cassert>
 #include <chrono>

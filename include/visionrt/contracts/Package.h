@@ -1,6 +1,6 @@
 #pragma once
 
-#include "visionrt/sdk/SchemaYaml.h"
+#include "visionrt/contracts/SchemaYaml.h"
 
 #include <filesystem>
 #include <string>

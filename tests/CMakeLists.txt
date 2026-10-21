@@ -10,9 +10,9 @@ else()
     set(_opencv_bin_dir "")
 endif()
 
-if(TARGET VisionRTPythonInterop)
+if(TARGET VisionRTContractsPython)
     add_executable(test_rect_interop test_rect_interop.cpp)
-    target_link_libraries(test_rect_interop PRIVATE VisionRT::PythonInterop)
+    target_link_libraries(test_rect_interop PRIVATE VisionRT::ContractsPython)
     add_test(NAME test_rect_interop COMMAND test_rect_interop)
     get_filename_component(_rect_python_root "${Python3_EXECUTABLE}" DIRECTORY)
     set_tests_properties(test_rect_interop PROPERTIES ENVIRONMENT_MODIFICATION
@@ -21,7 +21,7 @@ endif()
 
 # 1. test_sdk_value_contract
 add_executable(test_sdk_value_contract test_sdk_value_contract.cpp)
-target_link_libraries(test_sdk_value_contract PRIVATE VisionRT::ToolSDK)
+target_link_libraries(test_sdk_value_contract PRIVATE VisionRT::Contracts)
 if(MSVC)
     target_compile_options(test_sdk_value_contract PRIVATE /utf-8)
 endif()
@@ -32,7 +32,7 @@ endif()
 
 # 2. test_sdk_consumer
 add_executable(test_sdk_consumer test_sdk_consumer.cpp)
-target_link_libraries(test_sdk_consumer PRIVATE VisionRT::ToolSDK)
+target_link_libraries(test_sdk_consumer PRIVATE VisionRT::Contracts)
 if(MSVC)
     target_compile_options(test_sdk_consumer PRIVATE /utf-8)
 endif()
@@ -43,7 +43,7 @@ endif()
 
 # 3. test_sdk_package_contract
 add_executable(test_sdk_package_contract test_sdk_package_contract.cpp)
-target_link_libraries(test_sdk_package_contract PRIVATE VisionRT::ToolSDK)
+target_link_libraries(test_sdk_package_contract PRIVATE VisionRT::Contracts)
 if(MSVC)
     target_compile_options(test_sdk_package_contract PRIVATE /utf-8)
 endif()

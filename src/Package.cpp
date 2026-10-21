@@ -1,4 +1,4 @@
-#include "visionrt/sdk/Package.h"
+#include "visionrt/contracts/Package.h"
 
 #include <algorithm>
 #include <set>

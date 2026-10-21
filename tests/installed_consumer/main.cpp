@@ -1,13 +1,13 @@
-#include <visionrt/sdk/Module.h>
-#include <visionrt/sdk/SchemaYaml.h>
-#include <visionrt/sdk/ValueYaml.h>
+#include <visionrt/contracts/Module.h>
+#include <visionrt/contracts/SchemaYaml.h>
+#include <visionrt/contracts/ValueYaml.h>
 
 #include <algorithm>
 #include <cassert>
 #include <iostream>
 
 #ifdef EXPECT_PYTHON_INTEROP
-#include <visionrt/sdk/PythonInterop.h>
+#include <visionrt/contracts/PythonInterop.h>
 #include <pybind11/embed.h>
 #include <pybind11/numpy.h>
 #endif

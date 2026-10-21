@@ -1,6 +1,6 @@
 #pragma once
 
-#include "visionrt/sdk/Schema.h"
+#include "visionrt/contracts/Schema.h"
 #include <filesystem>
 #include <string>
 #include <unordered_map>

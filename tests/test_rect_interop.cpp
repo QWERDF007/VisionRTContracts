@@ -2,7 +2,7 @@
 #undef NDEBUG
 #endif
 
-#include <visionrt/sdk/PythonInterop.h>
+#include <visionrt/contracts/PythonInterop.h>
 
 #include <pybind11/embed.h>
 #include <pybind11/numpy.h>
