@@ -1,6 +1,7 @@
 #include "shared_probe.h"
 
 #include <visionrt/contracts/Value.h>
+#include <visionrt/contracts/Module.h>
 
 #include <array>
 #include <atomic>
@@ -11,7 +12,7 @@ std::atomic<int> imageReleases = 0;
 }
 
 int contractSharedProbe() {
-    return static_cast<int>(visionrt::dtypeSize(visionrt::DType::Float64));
+    return static_cast<int>(visionrt::MODULE_ABI_MAJOR);
 }
 
 visionrt::DataRef<std::vector<cv::Mat>> contractSharedImages()
@@ -34,4 +35,17 @@ void mutateContractSharedImages(const visionrt::DataRef<std::vector<cv::Mat>> &i
 int contractSharedImageReleases()
 {
     return imageReleases.load();
+}
+
+visionrt::PortValue contractSharedArray()
+{
+    return visionrt::Array(visionrt::NestedVector<std::string, 3>{
+        {{"共享数据"}, {}},
+        {}
+    });
+}
+
+visionrt::PortValue contractSharedRoi()
+{
+    return visionrt::DataRef<visionrt::ROI>(visionrt::ROI{{{0, 16777217.125, -2.5}}, {}});
 }

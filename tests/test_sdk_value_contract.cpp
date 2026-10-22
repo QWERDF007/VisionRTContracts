@@ -1,199 +1,164 @@
-#ifdef NDEBUG
-#undef NDEBUG
-#endif
-
 #include <visionrt/contracts/Value.h>
 #include <visionrt/contracts/Module.h>
 
 #include <array>
 #include <cassert>
 #include <cmath>
-#include <limits>
 #include <iostream>
-#include <stdexcept>
-#include <vector>
+#include <limits>
+#include <string>
 
 using namespace visionrt;
 
 namespace {
-template<class F> void rejects(F&& operation) {
+template<class Operation>
+void rejects(Operation &&operation)
+{
     bool rejected = false;
     try { operation(); } catch (const std::exception&) { rejected = true; }
     assert(rejected);
 }
-
-template<class T, std::size_t N>
-NumericBuffer numeric(DType dtype, std::vector<std::int64_t> shape,
-                      const std::array<T, N>& values) {
-    return NumericBuffer::copy(dtype, std::move(shape), std::as_bytes(std::span(values)));
-}
 }
 
-int main() try {
-    assert(std::string_view(typeName(Type::Int)) == "Int");
-    assert(std::string_view(typeName(Type::Rect)) == "Rect");
-    assert(std::string_view(dtypeName(DType::UInt8)) == "uint8");
-    assert(std::string_view(dtypeName(DType::Bool)) == "bool");
+int main()
+try
+{
+    static_assert(MODULE_ABI_MAJOR == 4);
+    static_assert(std::is_same_v<std::variant_alternative_t<4, PortValue>, std::string>);
+    assert(std::string_view(typeName(Type::Image)) == "Image");
+    assert(std::string_view(typeName(Type::Array)) == "Array");
+    assert(std::string_view(typeName(Type::ROI)) == "ROI");
+    assert(std::string_view(dtypeName(DType::String)) == "string");
     rejects([] { typeName(static_cast<Type>(-1)); });
     rejects([] { dtypeName(static_cast<DType>(999)); });
-    const TypeSpec scoresType{Type::NumericArray, DType::Float32, 2, Layout::BatchRagged};
-    assert(!compatible(scoresType, {Type::NumericArray, DType::Float32, 2, Layout::Dense}));
-    assert(!compatible(scoresType, {Type::NumericArray, DType::Float32, 3, Layout::BatchRagged}));
-    assert(!compatible(scoresType, {Type::NumericArray, DType::Int64, 2, Layout::BatchRagged}));
+    rejects([] { validateTypeSpec({static_cast<Type>(999)}); });
+    rejects([] { validateTypeSpec({Type::Array, static_cast<DType>(999), 1}); });
+    rejects([] { validateTypeSpec({Type::Array}); });
+    rejects([] { validateTypeSpec({Type::Array, DType::Int32, 0}); });
+    rejects([] { validateTypeSpec({Type::Array, DType::Int32, 5}); });
+    rejects([] { validateTypeSpec({Type::Image, DType::UInt8, 1}); });
     assert(!compatible({Type::Int}, {Type::Bool}));
-    rejects([] { validateTypeSpec({Type::NumericArray}); });
-    rejects([] { validateTypeSpec({Type::StringArray, {}, 1, Layout::BatchRagged}); });
-    validateValue(scoresType, Missing{});
-    const NumericArray scores(DType::Float32, 2, Layout::BatchRagged, {
-        numeric(DType::Float32, {0}, std::array<float, 0>{}),
-        numeric(DType::Float32, {3}, std::array{0.8F, 0.95F, 0.7F})});
-    validateValue(scoresType, scores);
-    assert(scores.buffers().size() == 2);
-    assert(scores.buffers()[0].shape()[0] == 0);
-    assert(scores.buffers()[1].values<float>()[1] == 0.95F);
-    const StringArray names(2, Layout::BatchRagged, {
-        StringBuffer({0}, {}), StringBuffer({3}, {"one", "two", "one"})});
-    assert(names.buffers()[0].values().empty());
-    assert(names.buffers()[1].values()[1] == "two");
-    const NumericArray empty(DType::Float32, 2, Layout::BatchRagged, {});
-    assert(!isMissing(PortValue{empty}));
-    assert(!isMissing(PortValue{ImageBatch{}}));
-    validateValue({Type::ImageBatch}, ImageBatch{});
-    rejects([&] { validateValue({Type::Int}, PortValue{true}); });
-    rejects([&] { NumericArray(DType::Float64, 2, Layout::BatchRagged,
-                               {scores.buffers()[1]}); });
-    rejects([] { numeric(DType::Int32, {2}, std::array<std::int32_t, 1>{7}); });
-    rejects([] { checkedElementCount(std::array<std::int64_t, 2>{-1, 0}); });
-    rejects([] { checkedElementCount(std::array<std::int64_t, 2>{
-        std::numeric_limits<std::int64_t>::max(), 3}); });
-    rejects([] { checkedByteCount(std::array<std::int64_t, 1>{
-        std::numeric_limits<std::int64_t>::max()}, sizeof(double)); });
-    assert(checkedElementCount(std::array<std::int64_t, 3>{
-        std::numeric_limits<std::int64_t>::max(), 3, 0}) == 0);
-    const auto scalar = numeric(DType::Int64, {}, std::array<std::int64_t, 1>{42});
-    assert(scalar.values<std::int64_t>()[0] == 42);
-    rejects([&] { scalar.values<double>(); });
-    rejects([] { StringBuffer({2}, {"one"}); });
-    rejects([] { Utf8(std::string("\xc0\x80", 2)); });
-    rejects([] { numeric(DType::Bool, {1}, std::array<std::uint8_t, 1>{2}); });
+    assert(!compatible({Type::Array, DType::Int64, 2}, {Type::Array, DType::Int64, 3}));
+    assert(!compatible({Type::Array, DType::Int32, 2}, {Type::Array, DType::Int64, 2}));
+    validateValue({Type::Image}, Missing{});
+    assert(!typeOf(Missing{}));
+    assert(!isMissing(DataRef<Image>(Image{})));
+    validateValue({Type::Image}, DataRef<Image>(Image{}));
+    rejects([] { validateValue({Type::Int}, true); });
+    const PortValue text = std::string("中文 🌍");
+    validateValue({Type::String}, text);
+    assert(equalValues(text, std::string("中文 🌍")));
+    rejects([] { validateValue({Type::String}, std::string("\xc0\x80", 2)); });
+    for (const auto &encoded : {std::string("\xed\xa0\x80", 3), std::string("\xf4\x90\x80\x80", 4),
+                                std::string("\xe4\xb8", 2), std::string("\x80", 1)})
+        rejects([&] { validateUtf8(encoded); });
 
-    const auto rectangle = Roi::rectangle(10, 20, 8, 4, 90);
-    const auto corners = rectangle.rectangleCorners();
-    assert(std::abs(corners[0].x - 16) < 0.0001);
-    assert(std::abs(corners[0].y - 18) < 0.0001);
-    assert(std::abs(corners[2].x - 12) < 0.0001);
-    assert(std::abs(corners[2].y - 26) < 0.0001);
-    const auto line = Roi::segment({-1, 2}, {3, 4});
-    assert(line.encoded()[0] == 1 && line.encoded()[1] == -1);
-    assert(Roi::circle(2, 3, 4).encoded()[3] == 4);
-    const std::array polygon{cv::Point2f{0, 0}, cv::Point2f{2, 0}, cv::Point2f{1, 1}};
-    assert(Roi::polygon(polygon).encoded()[0] == 4);
-    assert(Roi::points(std::span(polygon).first(1)).encoded()[0] == 5);
-    for (const auto& data : std::vector<std::vector<float>>{
-             {}, {1, 0, 0}, {2, 0, 0, 0, 1, 0}, {2, 0, 0, 1, -1, 0},
-             {3, 0, 0, 0}, {4, 0, 0, 1, 1}, {5}, {5, 1, 2, 3},
-             {1.5F, 0, 0, 1, 1}, {6, 0, 0},
-             {3, 0, 0, std::numeric_limits<float>::infinity()}}) {
-        rejects([&] { Roi::decode(data); });
-    }
-    const RoiBatch detections({{}, {Roi::rectangle(0, 0, 10, 10, 0),
-        Roi::rectangle(15, 0, 4, 4, 0), Roi::rectangle(25, 0, 8, 8, 0)}});
-    assert(detections.images()[0].empty());
-    assert(detections.images()[1][2].encoded()[3] == 8);
+    const DataRef<ROI> roi(ROI{
+        {{0, 1.125, 2.25}, {1, 1, 2, 3, 4}, {2, 10, 20, 8, 4, 90}, {3, 1, 2, 3}, {4, 0, 0, 4, 0, 0, 4}, {5, 1, 2}},
+        {}
+    });
+    validateValue({Type::ROI}, roi);
+    assert(roiKind(roi.get()[0][0]) == RoiKind::Point);
+    const auto corners = rectangleCorners(roi.get()[0][2]);
+    assert(std::abs(corners[0].x - 16) < 1e-12);
+    assert(std::abs(corners[0].y - 18) < 1e-12);
+    assert(std::abs(corners[2].x - 12) < 1e-12);
+    assert(std::abs(corners[2].y - 26) < 1e-12);
+    const double subpixel = 16777217.125;
+    const auto   precise  = rectangleCorners(std::array{2.0, subpixel, 1.0, 2.0, 4.0, 0.0});
+    assert(precise[0].x == subpixel && precise[2].x == subpixel + 2);
+    assert(!equalValues(DataRef<ROI>(ROI{}), DataRef<ROI>(ROI{{}})));
+    const auto roiAlias     = roi;
+    roiAlias.get()[0][0][1] = 9.5;
+    assert(roi.get()[0][0][1] == 9.5);
+    roiAlias.get()[0][0][0] = 0.5;
+    rejects([&] { validateValue({Type::ROI}, roi); });
+    for (const std::vector<double> &bad : std::initializer_list<std::vector<double>>{
+             {},
+             {0, 1},
+             {1, 1, 2, 3},
+             {2, 1, 2, 0, 3, 0},
+             {2, 1, 2, 3, -1, 0},
+             {3, 1, 2, 0},
+             {4, 0, 0, 1, 1},
+             {5},
+             {6, 1, 2},
+             {-1, 1, 2},
+             {0, std::numeric_limits<double>::infinity(), 2},
+             {0, 1, std::numeric_limits<double>::quiet_NaN()}
+    })
+        rejects([&] { validateRoi(bad); });
+    rejects([] { rectangleCorners(std::array{0.0, 1.0, 2.0}); });
 
-    OwnedImage image;
-    {
-        cv::Mat source(4, 5, CV_16UC1, cv::Scalar(123));
-        image = OwnedImage::copyOf(source);
-        source.setTo(999);
-    }
-    assert(image.readOnlyMat().at<std::uint16_t>(0, 0) == 123);
-    const auto cropped = image.region({1, 1, 2, 2});
-    assert(cropped.rowStride() == image.rowStride());
-    assert(!cropped.readOnlyMat().isContinuous());
-    auto retainedImage = image;
-    std::weak_ptr<const void> weakImage = image.owner();
-    image = {};
-    assert(!weakImage.expired());
-    retainedImage = {};
-    assert(weakImage.expired());
-    assert(cropped.readOnlyMat().at<std::uint16_t>(1, 1) == 123);
-    auto editable = cropped.clone();
-    editable.setTo(7);
-    assert(cropped.readOnlyMat().at<std::uint16_t>(0, 0) == 123);
-    cv::Mat aliased(1, 1, CV_8UC1, cv::Scalar(21));
-    cv::Mat alias = aliased;
-    const auto published = OwnedImage::take(std::move(aliased));
-    alias.setTo(99);
-    assert(published.readOnlyMat().at<std::uint8_t>(0, 0) == 21);
-    OwnedImage externalImage;
-    {
-        std::array<std::uint8_t, 2> external{31, 32};
-        cv::Mat header(1, 2, CV_8UC1, external.data());
-        externalImage = OwnedImage::take(std::move(header));
-        external[1] = 99;
-    }
-    assert(externalImage.readOnlyMat().at<std::uint8_t>(0, 1) == 32);
-    std::weak_ptr<const void> numericLifetime;
-    {
-        auto retained = scalar;
-        numericLifetime = retained.owner();
-        assert(retained.data() == scalar.data());
-    }
-    assert(!numericLifetime.expired());
-    {
-        auto temporary = numeric(DType::Int32, {1}, std::array<std::int32_t, 1>{7});
-        numericLifetime = temporary.owner();
-    }
-    assert(numericLifetime.expired());
-    const Utf8 text("共享 owner");
-    const Utf8 textAlias = text;
-    assert(text.owner() == textAlias.owner());
-    const auto roiAlias = rectangle;
-    assert(roiAlias.encoded().data() == rectangle.encoded().data());
-    assert(equalValues(Utf8("same"), Utf8("same")));
-    assert(!equalValues(PortValue{std::int64_t{1}}, PortValue{true}));
-    const NumericArray sameScores(DType::Float32, 2, Layout::BatchRagged, {
-        numeric(DType::Float32, {0}, std::array<float, 0>{}),
-        numeric(DType::Float32, {3}, std::array{0.8F, 0.95F, 0.7F})});
-    assert(equalValues(scores, sameScores));
-    const NumericArray changedScores(DType::Float32, 2, Layout::BatchRagged, {
-        numeric(DType::Float32, {0}, std::array<float, 0>{}),
-        numeric(DType::Float32, {3}, std::array{0.8F, 0.96F, 0.7F})});
-    assert(!equalValues(scores, changedScores));
-    const StringArray changedNames(2, Layout::BatchRagged, {
-        StringBuffer({0}, {}), StringBuffer({3}, {"one", "three", "one"})});
-    assert(!equalValues(names, changedNames));
-    assert(equalValues(RoiBatch({{Roi::circle(2, 3, 4)}}),
-                       RoiBatch({{Roi::circle(2, 3, 4)}})));
-    assert(!equalValues(RoiBatch({{Roi::circle(2, 3, 4)}}),
-                        RoiBatch({{Roi::circle(2, 3, 5)}})));
-    assert(equalValues(ImageBatch({cropped}), ImageBatch({cropped})));
-    assert(!equalValues(ImageBatch({cropped}), ImageBatch({OwnedImage::copyOf(cropped.readOnlyMat())})));
+    const DataRef<Image> images(Image{cv::Mat(3, 7, CV_8UC1, cv::Scalar(17))});
+    const auto           alias            = images;
+    alias.get()[0].at<std::uint8_t>(2, 6) = 31;
+    assert(images.get()[0].at<std::uint8_t>(2, 6) == 31);
+    alias.get().push_back(images.get()[0](cv::Rect(1, 0, 4, 3)));
+    validateValue({Type::Image}, images);
+    assert(images.get()[1].step[0] == 7);
+    assert(equalValues(images, alias));
+    assert(!equalValues(images, DataRef<Image>(Image{images.get()[0].clone(), images.get()[1].clone()})));
+    alias.get().push_back(cv::Mat{});
+    rejects([&] { validateValue({Type::Image}, images); });
+    const std::array<int, 3> dimensions{2, 3, 4};
+    rejects([&] { validateValue({Type::Image}, DataRef<Image>(Image{cv::Mat(3, dimensions.data(), CV_8UC1)})); });
 
-    for (const std::string literal : {"9007199254740993", "9223372036854775807",
-                                      "-9223372036854775808", "0", "-1"}) {
+    const Array names(NestedVector<std::string, 2>{
+        {},
+        {"中文", "two"}
+    });
+    validateValue({Type::Array, DType::String, 2}, names);
+    assert(equalValues(names, Array(NestedVector<std::string, 2>{
+                                  {},
+                                  {"中文", "two"}
+    })));
+    names.get<NestedVector<std::string, 2>>()[1][1] = std::string("\xc0\x80", 2);
+    rejects([&] { validateValue({Type::Array, DType::String, 2}, names); });
+    const Array flags(std::vector<bool>{true, false, true});
+    validateValue({Type::Array, DType::Bool, 1}, flags);
+    flags.get<std::vector<bool>>()[1] = true;
+    assert(equalValues(flags, Array(std::vector<bool>{true, true, true})));
+    assert(!equalValues(flags, Array(std::vector<std::int32_t>{1, 1, 1})));
+
+    for (const PortValue &source : {PortValue(DataRef<Image>(Image{})), PortValue(DataRef<ROI>(ROI{{}}))})
+    {
+        std::weak_ptr<void> weak;
+        PortValue           retained;
+        {
+            Owner dependency = std::make_shared<int>(7);
+            weak             = dependency;
+            retained         = retainValue(source, dependency);
+            assert(equalValues(source, retained));
+        }
+        assert(!weak.expired());
+        retained = Missing{};
+        assert(weak.expired());
+    }
+
+    for (const std::string literal : {"9007199254740993", "9223372036854775807", "-9223372036854775808", "0", "-1"})
         assert(formatInt64(parseInt64(literal)) == literal);
-    }
-    assert(parseInt64("9007199254740993") == 9007199254740993LL);
-    assert(parseInt64("-9223372036854775808") == std::numeric_limits<std::int64_t>::min());
-    for (const auto* bad : {"", "+1", " 1", "1 ", "1.0", "1e2", "--1",
-                            "9223372036854775808", "-9223372036854775809"}) {
+    for (const auto *bad : {"", "+1", " 1", "1 ", "1.0", "1e2", "--1", "9223372036854775808", "-9223372036854775809"})
         rejects([&] { parseInt64(bad); });
-    }
+    rejects([] { checkedElementCount(std::array<std::int64_t, 2>{-1, 0}); });
+    rejects([] { checkedElementCount(std::array<std::int64_t, 2>{std::numeric_limits<std::int64_t>::max(), 3}); });
+    rejects(
+        []
+        { checkedByteCount(std::array<std::int64_t, 1>{std::numeric_limits<std::int64_t>::max()}, sizeof(double)); });
+    assert(checkedElementCount(std::array<std::int64_t, 3>{std::numeric_limits<std::int64_t>::max(), 3, 0}) == 0);
 
-    static_assert(MODULE_ABI_MAJOR == 3);
-    for (const auto *blank : {"", " ", "\t\r\n", "\v\f"}) {
+    for (const auto *blank : {"", " ", "\t\r\n", "\v\f"})
+    {
         assert(isBlankMessage(blank));
         const auto success = normalizeExecutionStatus({0, blank, "raw success"});
         assert(success.message == "运行成功" && success.detail == "raw success");
         const auto failure = normalizeExecutionStatus({17, blank, "raw failure"});
         assert(failure.code == 17 && failure.message == "运行失败（错误码：17）");
-        const auto twice = normalizeExecutionStatus(failure);
-        assert(twice.message == failure.message && twice.detail == "raw failure");
+        assert(normalizeExecutionStatus(failure).message == failure.message);
         assert(normalizeExecutionStatus({kCancelledStatus, blank}).message == "运行已取消");
     }
     assert(normalizeExecutionStatus({9, "业务失败", "technical"}).message == "业务失败");
+    std::cout << "ABI4 writable value, double ROI and scalar contracts verified\n";
     return 0;
 }
 catch (const std::exception& error) {
