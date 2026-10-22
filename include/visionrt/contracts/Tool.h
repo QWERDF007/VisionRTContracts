@@ -17,6 +17,7 @@ inline constexpr std::int64_t kCancelledStatus = -5;
 struct ToolStatus {
     std::int64_t code = 0;
     std::string message;
+    std::string detail;
     explicit operator bool() const noexcept { return code == 0; }
 };
 

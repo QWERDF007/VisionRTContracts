@@ -10,6 +10,9 @@ using namespace visionrt;
 int main()
 try
 {
+    static_assert(MODULE_ABI_MAJOR == 3);
+    const auto status = normalizeExecutionStatus({7, "\v\f", "installed detail"});
+    assert(status.code == 7 && !status.message.empty() && status.detail == "installed detail");
     assert(contractSharedProbe() == 8);
     const PortValue rectangle = Roi::rectangle(1.25F, -2.5F, 3.75F, 4.5F, 17.5F);
     validateValue({Type::Rect}, rectangle);

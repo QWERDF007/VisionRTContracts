@@ -7,7 +7,8 @@ namespace visionrt {
 
 bool isBlankMessage(std::string_view message) noexcept {
     return std::all_of(message.begin(), message.end(), [](char character) {
-        return character == ' ' || character == '\t' || character == '\r' || character == '\n';
+        return character == ' ' || character == '\t' || character == '\r' || character == '\n'
+            || character == '\v' || character == '\f';
     });
 }
 

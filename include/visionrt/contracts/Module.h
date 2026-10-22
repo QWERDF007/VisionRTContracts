@@ -1,20 +1,17 @@
 #pragma once
 
 #include "visionrt/contracts/Export.h"
-#include "visionrt/contracts/Tool.h"
+#include "visionrt/contracts/Registry.h"
 #include <cstdint>
 
 namespace visionrt {
 
-constexpr std::uint32_t MODULE_ABI_MAJOR = 2;
+constexpr std::uint32_t MODULE_ABI_MAJOR = 3;
 
 struct ModuleApi {
     std::uint32_t abi_major;
     std::uint32_t struct_bytes;
-    IToolInstance* (VT_CALL *create)(const char* registry_name,
-                                   const ToolServices* services,
-                                   ToolStatus* status) noexcept;
-    void (VT_CALL *destroy)(IToolInstance*) noexcept;
+    ToolStatus (VT_CALL *register_tools)(IToolRegistry&) noexcept;
 };
 
 } // namespace visionrt

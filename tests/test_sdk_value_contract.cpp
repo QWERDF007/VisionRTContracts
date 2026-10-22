@@ -3,6 +3,7 @@
 #endif
 
 #include <visionrt/contracts/Value.h>
+#include <visionrt/contracts/Module.h>
 
 #include <array>
 #include <cassert>
@@ -181,6 +182,18 @@ int main() try {
         rejects([&] { parseInt64(bad); });
     }
 
+    static_assert(MODULE_ABI_MAJOR == 3);
+    for (const auto *blank : {"", " ", "\t\r\n", "\v\f"}) {
+        assert(isBlankMessage(blank));
+        const auto success = normalizeExecutionStatus({0, blank, "raw success"});
+        assert(success.message == "运行成功" && success.detail == "raw success");
+        const auto failure = normalizeExecutionStatus({17, blank, "raw failure"});
+        assert(failure.code == 17 && failure.message == "运行失败（错误码：17）");
+        const auto twice = normalizeExecutionStatus(failure);
+        assert(twice.message == failure.message && twice.detail == "raw failure");
+        assert(normalizeExecutionStatus({kCancelledStatus, blank}).message == "运行已取消");
+    }
+    assert(normalizeExecutionStatus({9, "业务失败", "technical"}).message == "业务失败");
     return 0;
 }
 catch (const std::exception& error) {
