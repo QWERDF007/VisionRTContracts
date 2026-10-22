@@ -1,6 +1,7 @@
 #include "visionrt/contracts/Value.h"
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <cmath>
 #include <cstring>
@@ -9,6 +10,16 @@
 #include <utility>
 
 namespace visionrt {
+const char* typeName(Type type) {
+    constexpr std::array names{"Int", "Float", "Bool", "String", "ImageBatch", "NumericArray", "StringArray", "RoiBatch", "Rect"};
+    return names.at(static_cast<std::size_t>(type));
+}
+
+const char* dtypeName(DType dtype) {
+    constexpr std::array names{"uint8", "int32", "int64", "float32", "float64", "bool"};
+    return names.at(static_cast<std::size_t>(dtype));
+}
+
 namespace {
 
 void validateArrayShape(int rank, Layout layout, std::size_t bufferCount) {

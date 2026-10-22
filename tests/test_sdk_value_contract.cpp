@@ -29,6 +29,12 @@ NumericBuffer numeric(DType dtype, std::vector<std::int64_t> shape,
 }
 
 int main() try {
+    assert(std::string_view(typeName(Type::Int)) == "Int");
+    assert(std::string_view(typeName(Type::Rect)) == "Rect");
+    assert(std::string_view(dtypeName(DType::UInt8)) == "uint8");
+    assert(std::string_view(dtypeName(DType::Bool)) == "bool");
+    rejects([] { typeName(static_cast<Type>(-1)); });
+    rejects([] { dtypeName(static_cast<DType>(999)); });
     const TypeSpec scoresType{Type::NumericArray, DType::Float32, 2, Layout::BatchRagged};
     assert(!compatible(scoresType, {Type::NumericArray, DType::Float32, 2, Layout::Dense}));
     assert(!compatible(scoresType, {Type::NumericArray, DType::Float32, 3, Layout::BatchRagged}));
