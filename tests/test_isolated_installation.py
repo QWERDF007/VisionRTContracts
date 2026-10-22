@@ -39,9 +39,6 @@ def main():
     parser.add_argument("--opencv-bin", default="")
     parser.add_argument("--make-program", default="")
     parser.add_argument("--cxx-compiler", default="")
-    parser.add_argument("--python-interop", action="store_true")
-    parser.add_argument("--pybind11-dir", default="")
-    parser.add_argument("--python-root", default="")
     args = parser.parse_args()
 
     cmake_bin = find_cmake()
@@ -59,6 +56,9 @@ def main():
         run_cmd([cmake_bin, "--install", str(build_dir), "--prefix", str(install_prefix), "--config", args.config])
 
         assert (install_prefix / "include" / "visionrt" / "contracts" / "Value.h").is_file(), "Value.h not installed"
+        for host_header in ("Schema.h", "Contract.h", "SchemaYaml.h", "ValueYaml.h", "Package.h", "PythonInterop.h"):
+            assert not (install_prefix / "include" / "visionrt" / "contracts" / host_header).exists(), f"Host header exported: {host_header}"
+        assert not (install_prefix / "bin" / "visionrt_validate_tool.exe").exists(), "Host validator exported by Contracts"
         assert (install_prefix / "lib" / "cmake" / "VisionRTContracts" / "VisionRTContractsConfig.cmake").is_file(), "Config not installed"
 
         # 3. Configure consumer with CMAKE_PREFIX_PATH
@@ -82,7 +82,6 @@ def main():
             "-S", str(consumer_src),
             "-G", "Ninja",
             f"-DCMAKE_BUILD_TYPE={args.config}",
-            f"-DEXPECT_PYTHON_INTEROP={'ON' if args.python_interop else 'OFF'}",
             f"-DCMAKE_PREFIX_PATH={prefix_arg}"
         ]
         config_cmd.extend([
@@ -94,11 +93,6 @@ def main():
             config_cmd.append(f"-DCMAKE_MAKE_PROGRAM={args.make_program}")
         if args.cxx_compiler:
             config_cmd.append(f"-DCMAKE_CXX_COMPILER={args.cxx_compiler}")
-        if args.pybind11_dir:
-            config_cmd.append(f"-Dpybind11_DIR={args.pybind11_dir}")
-        if args.python_root:
-            config_cmd.append(f"-DPython3_ROOT_DIR={args.python_root}")
-            config_cmd.append(f"-DPython3_EXECUTABLE={Path(args.python_root) / ('python.exe' if os.name == 'nt' else 'python3')}")
 
         run_cmd(config_cmd)
 
@@ -107,9 +101,10 @@ def main():
         run_cmd([cmake_bin, "--build", str(consumer_build), "--config", args.config])
 
         # 5. Execute consumer
-        bin_path = consumer_build / "consumer_bin.exe"
+        binary_name = "consumer_bin.exe" if os.name == "nt" else "consumer_bin"
+        bin_path = consumer_build / binary_name
         if not bin_path.is_file():
-            bin_path = consumer_build / args.config / "consumer_bin.exe"
+            bin_path = consumer_build / args.config / binary_name
         assert bin_path.is_file(), f"Consumer binary not found at {bin_path}"
 
         runtime_paths = ([str(Path(os.environ["SystemRoot"]) / "System32"), os.environ["SystemRoot"]]
@@ -117,17 +112,7 @@ def main():
         extra_env = {"PYTHONPATH": ""}
         if args.opencv_bin and Path(args.opencv_bin).is_dir():
             runtime_paths.insert(0, str(Path(args.opencv_bin).resolve()))
-        else:
-            for p in prefix_paths:
-                p_obj = Path(p)
-                for bin_cand in [p_obj / "bin", p_obj.parent / "bin", p_obj]:
-                    if (bin_cand / "opencv_world480.dll").is_file():
-                        runtime_paths.insert(0, str(bin_cand))
-                        break
 
-        if args.python_interop and args.python_root:
-            extra_env["PYTHONHOME"] = args.python_root
-            runtime_paths.insert(0, args.python_root)
         extra_env["PATH"] = os.pathsep.join(runtime_paths)
         print("[Install Test] Running consumer binary...")
         res = run_cmd([str(bin_path)], env=extra_env)

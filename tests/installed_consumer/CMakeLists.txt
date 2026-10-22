@@ -3,28 +3,18 @@ project(StandaloneConsumer LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-option(EXPECT_PYTHON_INTEROP "Consume the installed optional Python bridge" OFF)
-
 find_package(VisionRTContracts CONFIG REQUIRED)
-if(NOT TARGET VisionRT::visionrt_validate_tool)
-    message(FATAL_ERROR "Imported target VisionRT::visionrt_validate_tool not found")
-endif()
+foreach(host_target IN ITEMS VisionRT::visionrt_validate_tool VisionRT::ContractsPython yaml-cpp::yaml-cpp pybind11::embed Qt6::Core)
+    if(TARGET ${host_target})
+        message(FATAL_ERROR "Contracts exposes host dependency: ${host_target}")
+    endif()
+endforeach()
 
 add_library(consumer_shared SHARED shared_probe.cpp)
 target_link_libraries(consumer_shared PRIVATE VisionRT::Contracts)
-set_target_properties(consumer_shared PROPERTIES
-    WINDOWS_EXPORT_ALL_SYMBOLS ON
-    POSITION_INDEPENDENT_CODE ON)
-
+set_target_properties(consumer_shared PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON POSITION_INDEPENDENT_CODE ON)
 add_executable(consumer_bin main.cpp)
 target_link_libraries(consumer_bin PRIVATE VisionRT::Contracts consumer_shared)
-if(EXPECT_PYTHON_INTEROP)
-    target_link_libraries(consumer_bin PRIVATE VisionRT::ContractsPython)
-    target_compile_definitions(consumer_bin PRIVATE EXPECT_PYTHON_INTEROP)
-elseif(TARGET VisionRT::ContractsPython)
-    message(FATAL_ERROR "Core-only SDK unexpectedly exports ContractsPython")
-endif()
-
 if(MSVC)
     target_compile_options(consumer_bin PRIVATE /UNDEBUG /utf-8)
     target_compile_options(consumer_shared PRIVATE /utf-8)
