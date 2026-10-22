@@ -10,17 +10,24 @@ if(NOT TARGET VisionRT::visionrt_validate_tool)
     message(FATAL_ERROR "Imported target VisionRT::visionrt_validate_tool not found")
 endif()
 
+add_library(consumer_shared SHARED shared_probe.cpp)
+target_link_libraries(consumer_shared PRIVATE VisionRT::Contracts)
+set_target_properties(consumer_shared PROPERTIES
+    WINDOWS_EXPORT_ALL_SYMBOLS ON
+    POSITION_INDEPENDENT_CODE ON)
+
 add_executable(consumer_bin main.cpp)
-target_link_libraries(consumer_bin PRIVATE VisionRT::ToolSDK)
+target_link_libraries(consumer_bin PRIVATE VisionRT::Contracts consumer_shared)
 if(EXPECT_PYTHON_INTEROP)
-    target_link_libraries(consumer_bin PRIVATE VisionRT::PythonInterop)
+    target_link_libraries(consumer_bin PRIVATE VisionRT::ContractsPython)
     target_compile_definitions(consumer_bin PRIVATE EXPECT_PYTHON_INTEROP)
-elseif(TARGET VisionRT::PythonInterop)
-    message(FATAL_ERROR "Core-only SDK unexpectedly exports PythonInterop")
+elseif(TARGET VisionRT::ContractsPython)
+    message(FATAL_ERROR "Core-only SDK unexpectedly exports ContractsPython")
 endif()
 
 if(MSVC)
     target_compile_options(consumer_bin PRIVATE /UNDEBUG /utf-8)
+    target_compile_options(consumer_shared PRIVATE /utf-8)
 else()
     target_compile_options(consumer_bin PRIVATE -UNDEBUG)
 endif()

@@ -4,38 +4,9 @@ project(VisionRTContracts VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 if(NOT TARGET opencv_core)
-    if(NOT DEFINED OpenCV_DIR AND NOT DEFINED ENV{OpenCV_DIR})
-        set(_opencv_root "")
-        if(DEFINED OpenCV_HOME)
-            set(_opencv_root "${OpenCV_HOME}")
-        elseif(DEFINED ENV{OpenCV_HOME})
-            set(_opencv_root "$ENV{OpenCV_HOME}")
-        elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tools/dependencies.yaml")
-            file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/tools/dependencies.yaml" _dep_lines)
-            foreach(_line IN LISTS _dep_lines)
-                if(_line MATCHES "^[ ]*default:[ ]*(.+)$")
-                    string(REGEX REPLACE "^[ ]*default:[ ]*" "" _def_path "${_line}")
-                    string(REGEX REPLACE "^[\"'](.*)[\"']$" "\\1" _def_path "${_def_path}")
-                    string(STRIP "${_def_path}" _def_path)
-                    if(EXISTS "${_def_path}")
-                        set(_opencv_root "${_def_path}")
-                        break()
-                    endif()
-                endif()
-            endforeach()
-        endif()
-
-        if(_opencv_root)
-            foreach(_cand IN ITEMS "${_opencv_root}/lib" "${_opencv_root}/lib/cmake/opencv4" "${_opencv_root}")
-                if(EXISTS "${_cand}/OpenCVConfig.cmake")
-                    set(OpenCV_DIR "${_cand}" CACHE PATH "OpenCV CMake package directory" FORCE)
-                    break()
-                endif()
-            endforeach()
-        endif()
-    endif()
     find_package(OpenCV REQUIRED COMPONENTS core)
 endif()
 
@@ -58,12 +29,14 @@ add_library(VisionRTContracts STATIC
     src/Package.cpp
     src/Schema.cpp
     src/SchemaYaml.cpp
+    src/Tool.cpp
     src/Value.cpp
     src/ValueYaml.cpp
 )
 add_library(VisionRT::Contracts ALIAS VisionRTContracts)
-add_library(VisionRT::ToolSDK ALIAS VisionRTContracts)
-set_target_properties(VisionRTContracts PROPERTIES EXPORT_NAME Contracts)
+set_target_properties(VisionRTContracts PROPERTIES
+    EXPORT_NAME Contracts
+    POSITION_INDEPENDENT_CODE ON)
 
 target_compile_features(VisionRTContracts PUBLIC cxx_std_20)
 target_compile_definitions(VisionRTContracts PUBLIC YAML_CPP_STATIC_DEFINE)
@@ -101,8 +74,9 @@ if(VISIONRT_BUILD_PYTHON_INTEROP)
         src/PythonInterop.cpp
     )
     add_library(VisionRT::ContractsPython ALIAS VisionRTContractsPython)
-    add_library(VisionRT::PythonInterop ALIAS VisionRTContractsPython)
-    set_target_properties(VisionRTContractsPython PROPERTIES EXPORT_NAME ContractsPython)
+    set_target_properties(VisionRTContractsPython PROPERTIES
+        EXPORT_NAME ContractsPython
+        POSITION_INDEPENDENT_CODE ON)
 
     target_compile_features(VisionRTContractsPython PUBLIC cxx_std_20)
     target_include_directories(VisionRTContractsPython

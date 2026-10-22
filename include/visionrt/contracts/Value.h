@@ -35,6 +35,8 @@ public:
     using std::invalid_argument::invalid_argument;
 };
 
+VT_EXPORT const char* typeName(Type type);
+VT_EXPORT const char* dtypeName(DType dtype);
 VT_EXPORT void validateTypeSpec(const TypeSpec& type);
 VT_EXPORT bool compatible(const TypeSpec& source, const TypeSpec& target);
 VT_EXPORT std::size_t dtypeSize(DType dtype);

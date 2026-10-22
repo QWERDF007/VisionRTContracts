@@ -15,17 +15,9 @@ from pathlib import Path
 
 def find_cmake():
     cmake_bin = shutil.which("cmake")
-    if cmake_bin:
-        return cmake_bin
-    for cand in [
-        "E:/Softwares/CMake/bin/cmake.exe",
-        "C:/Program Files/CMake/bin/cmake.exe",
-        "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe",
-        "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe",
-    ]:
-        if Path(cand).is_file():
-            return cand
-    return "cmake"
+    if not cmake_bin:
+        raise RuntimeError("cmake is not available on PATH")
+    return cmake_bin
 
 def run_cmd(args, cwd=None, env=None):
     merged_env = os.environ.copy()
@@ -66,7 +58,7 @@ def main():
         print(f"[Install Test] Installing to {install_prefix}...")
         run_cmd([cmake_bin, "--install", str(build_dir), "--prefix", str(install_prefix), "--config", args.config])
 
-        assert (install_prefix / "include" / "visionrt" / "sdk" / "Value.h").is_file(), "Value.h not installed"
+        assert (install_prefix / "include" / "visionrt" / "contracts" / "Value.h").is_file(), "Value.h not installed"
         assert (install_prefix / "lib" / "cmake" / "VisionRTContracts" / "VisionRTContractsConfig.cmake").is_file(), "Config not installed"
 
         # 3. Configure consumer with CMAKE_PREFIX_PATH

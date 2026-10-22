@@ -41,7 +41,18 @@ if(_opencv_bin_dir)
     set_tests_properties(test_sdk_consumer PROPERTIES ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${_opencv_bin_dir}")
 endif()
 
-# 3. test_sdk_package_contract
+# 3. test_sdk_runtime_contract
+add_executable(test_sdk_runtime_contract test_sdk_runtime_contract.cpp)
+target_link_libraries(test_sdk_runtime_contract PRIVATE VisionRT::Contracts)
+if(MSVC)
+    target_compile_options(test_sdk_runtime_contract PRIVATE /utf-8)
+endif()
+add_test(NAME test_sdk_runtime_contract COMMAND test_sdk_runtime_contract)
+if(_opencv_bin_dir)
+    set_tests_properties(test_sdk_runtime_contract PROPERTIES ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${_opencv_bin_dir}")
+endif()
+
+# 4. test_sdk_package_contract
 add_executable(test_sdk_package_contract test_sdk_package_contract.cpp)
 target_link_libraries(test_sdk_package_contract PRIVATE VisionRT::Contracts)
 if(MSVC)

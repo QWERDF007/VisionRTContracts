@@ -3,7 +3,9 @@
 #include "visionrt/contracts/Tool.h"
 #include <filesystem>
 #include <optional>
+#include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace visionrt {
@@ -57,6 +59,12 @@ struct ToolDefinition {
     std::vector<PortDefinition> inputs;
     std::vector<PortDefinition> outputs;
 };
+
+// True only for String ports whose editor selects a resource path (file, directory, path).
+VT_EXPORT bool isPathPort(const PortDefinition& port);
+
+// Fixed parameter pages shared by the validator and the workbench.
+VT_EXPORT std::span<const std::string_view> toolTabs() noexcept;
 
 // SSOT schema validation for tool declarations across VisionRT and VisionTools.
 // Throws ContractError if any validation rule is violated.

@@ -26,6 +26,10 @@ VT_EXPORT void validateToolYaml(
     const std::filesystem::path& definitionPath = {},
     bool builtin = false);
 
+// Emits the canonical YAML model for a parsed definition. Relative entry and
+// resource references stay relative to the declaration file.
+VT_EXPORT std::string emitNormalizedToolYaml(const ToolDefinition& definition);
+
 struct ModuleEntry {
     std::string library;
 };

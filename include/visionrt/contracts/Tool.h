@@ -5,16 +5,28 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <string_view>
 
 namespace visionrt {
 
 using Values = std::map<std::string, PortValue, std::less<>>;
+
+// Host-owned cancellation result; tool authors never return it as a business code.
+inline constexpr std::int64_t kCancelledStatus = -5;
 
 struct ToolStatus {
     std::int64_t code = 0;
     std::string message;
     explicit operator bool() const noexcept { return code == 0; }
 };
+
+VT_EXPORT bool isBlankMessage(std::string_view message) noexcept;
+
+// A successful execution status; a blank message becomes 运行成功.
+VT_EXPORT ToolStatus executionSuccess(std::string message = "运行成功");
+
+// Applies the shared execution-status rule to a final execute result.
+VT_EXPORT ToolStatus normalizeExecutionStatus(ToolStatus status);
 
 struct ToolResult {
     ToolStatus status;

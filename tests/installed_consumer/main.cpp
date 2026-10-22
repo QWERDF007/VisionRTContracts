@@ -1,3 +1,5 @@
+#include "shared_probe.h"
+
 #include <visionrt/contracts/Module.h>
 #include <visionrt/contracts/SchemaYaml.h>
 #include <visionrt/contracts/ValueYaml.h>
@@ -19,6 +21,7 @@ int main()
     try
     {
         static_assert(MODULE_ABI_MAJOR == 2);
+        assert(contractSharedProbe() == 8);
         const TypeSpec rectType{Type::Rect};
         const PortValue rectangle = Roi::rectangle(1.25F, -2.5F, 3.75F, 4.5F, 17.5F);
         assert(typeOf(rectangle) == rectType);

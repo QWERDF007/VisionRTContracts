@@ -16,11 +16,12 @@
 namespace {
 int runValidation(int argc, const wchar_t* const* argv) {
     if (argc < 2) {
-        std::cerr << "Usage: visionrt_validate_tool [--package <dir> | --index <file> | <file.yaml>]\n";
+        std::cerr << "Usage: visionrt_validate_tool [--package <dir> | --index <file> | --emit-normalized-yaml <file.yaml> | <file.yaml>]\n";
         return 1;
     }
     bool isIndex = false;
     bool isPackage = false;
+    bool emitNormalized = false;
     std::filesystem::path targetPath;
     for (int i = 1; i < argc; ++i) {
         std::wstring_view arg = argv[i];
@@ -28,12 +29,14 @@ int runValidation(int argc, const wchar_t* const* argv) {
             isIndex = true;
         } else if (arg == L"--package") {
             isPackage = true;
+        } else if (arg == L"--emit-normalized-yaml") {
+            emitNormalized = true;
         } else {
             targetPath = arg;
         }
     }
     if (targetPath.empty()) {
-        std::cerr << "Usage: visionrt_validate_tool [--package <dir> | --index <file> | <file.yaml>]\n";
+        std::cerr << "Usage: visionrt_validate_tool [--package <dir> | --index <file> | --emit-normalized-yaml <file.yaml> | <file.yaml>]\n";
         return 1;
     }
     if (!isPackage && (targetPath.filename() == "module_index.yaml" || targetPath.filename() == "module_index.yml")) {
@@ -47,6 +50,9 @@ int runValidation(int argc, const wchar_t* const* argv) {
         } else if (isIndex) {
             const auto index = visionrt::parseModuleIndexFile(targetPath);
             std::cout << "Valid module index: " << index.tools.size() << " tools across " << index.modules.size() << " modules\n";
+        } else if (emitNormalized) {
+            const auto definition = visionrt::parseToolDefinitionFile(targetPath);
+            std::cout << visionrt::emitNormalizedToolYaml(definition);
         } else {
             const auto definition = visionrt::parseToolDefinitionFile(targetPath);
             std::cout << "Valid tool definition: " << definition.id << " (" << definition.displayName << ")\n";

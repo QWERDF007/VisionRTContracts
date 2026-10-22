@@ -1,5 +1,6 @@
 #include "visionrt/contracts/Schema.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <set>
@@ -95,14 +96,18 @@ void validatePorts(const std::vector<PortDefinition>& ports, const std::string& 
             }
         }
 
+        const bool pathEditor = port.editor == "file" || port.editor == "directory" || port.editor == "path";
+        if (pathEditor && port.type != TypeSpec{Type::String})
+            throw ContractError("路径编辑器要求 String 类型端口：" + port.id);
+
         if (!port.pathModeFrom.empty() && (output || port.editor != "path"))
             throw ContractError("path_mode_from requires a path editor: " + port.id);
-        if (port.editor == "path" && (port.type != TypeSpec{Type::String} || port.pathModeFrom.empty()))
-            throw ContractError("path editor requires a String port and path_mode_from: " + port.id);
+        if (port.editor == "path" && port.pathModeFrom.empty())
+            throw ContractError("path editor requires path_mode_from: " + port.id);
 
         if (!port.tab.empty()) {
-            const std::set<std::string> validTabs = {"基本输入", "预处理", "检测", "结果处理"};
-            if (!validTabs.contains(port.tab)) {
+            const auto tabs = toolTabs();
+            if (std::find(tabs.begin(), tabs.end(), port.tab) == tabs.end()) {
                 throw ContractError("Unknown tab: " + port.tab + " on port " + port.id);
             }
         }
@@ -204,6 +209,16 @@ void validatePorts(const std::vector<PortDefinition>& ports, const std::string& 
 }
 
 } // namespace
+
+bool isPathPort(const PortDefinition& port) {
+    return port.type == TypeSpec{Type::String} &&
+        (port.editor == "file" || port.editor == "directory" || port.editor == "path");
+}
+
+std::span<const std::string_view> toolTabs() noexcept {
+    static constexpr std::array<std::string_view, 4> tabs{"基本输入", "预处理", "检测", "结果处理"};
+    return tabs;
+}
 
 void validateToolDefinition(const ToolDefinition& def) {
     if (def.schemaVersion != 1) {

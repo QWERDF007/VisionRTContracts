@@ -312,6 +312,120 @@ void validateToolYaml(const std::string& yamlContent,
     parseToolDefinitionYaml(yamlContent, definitionPath, builtin);
 }
 
+namespace {
+
+const char* kindText(ToolKind kind) {
+    switch (kind) {
+    case ToolKind::CppFunction: return "cpp_function";
+    case ToolKind::CppClass: return "cpp_class";
+    case ToolKind::PythonFunction: return "python_function";
+    case ToolKind::PythonClass: return "python_class";
+    }
+    throw ContractError("Unknown tool kind");
+}
+
+std::string declarationRelativeText(const std::filesystem::path& path,
+                                    const std::filesystem::path& declaration) {
+    if (path.empty()) return {};
+    const auto base = declaration.parent_path();
+    if (base.empty()) return pathText(path);
+    const auto relative = path.lexically_relative(base);
+    if (relative.empty() || (!relative.empty() && *relative.begin() == std::filesystem::path(u8"..")))
+        throw ContractError("资源路径不在工具声明目录内：" + pathText(path));
+    return pathText(relative);
+}
+
+void encodePortType(YAML::Node& node, const TypeSpec& type) {
+    node["type"] = typeName(type.type);
+    if (type.type == Type::NumericArray || type.type == Type::StringArray) {
+        if (type.dtype) node["dtype"] = dtypeName(*type.dtype);
+        node["rank"] = type.rank;
+        node["layout"] = type.layout == Layout::Dense ? "dense" : "batch_ragged";
+    }
+}
+
+YAML::Node encodePort(const PortDefinition& port, bool output) {
+    YAML::Node node(YAML::NodeType::Map);
+    node["id"] = port.id;
+    node["name"] = port.name;
+    if (port.typeFrom) {
+        YAML::Node reference(YAML::NodeType::Map);
+        reference["flow"] = port.typeFrom->flowParameter;
+        reference["node"] = port.typeFrom->nodeParameter;
+        reference["port"] = port.typeFrom->portParameter;
+        node["type_from"] = reference;
+        return node;
+    }
+    encodePortType(node, port.type);
+    if (!output) {
+        if (!isMissing(port.defaultValue)) node["default"] = encodeValue(port.defaultValue, port.type);
+        if (!port.editor.empty()) node["editor"] = port.editor;
+        if (!port.pathModeFrom.empty()) node["path_mode_from"] = port.pathModeFrom;
+        if (!port.tab.empty()) node["tab"] = port.tab;
+        if (!port.group.empty()) node["group"] = port.group;
+        if (port.minimum) node["min"] = encodeValue(*port.minimum, port.type);
+        if (port.maximum) node["max"] = encodeValue(*port.maximum, port.type);
+        if (port.step) node["step"] = encodeValue(*port.step, port.type);
+        if (port.decimals) node["decimals"] = *port.decimals;
+        if (!port.options.empty()) {
+            YAML::Node options(YAML::NodeType::Sequence);
+            for (const auto& option : port.options) options.push_back(encodeValue(option, port.type));
+            node["options"] = options;
+        }
+        if (!port.optionsProvider.empty()) node["options_provider"] = port.optionsProvider;
+        if (!port.imageInput.empty()) node["image_input"] = port.imageInput;
+    } else {
+        if (!port.imagePort.empty()) node["image_port"] = port.imagePort;
+        if (!port.colorOrder.empty() || !port.sameGeometryAsInput.empty()) {
+            YAML::Node display(YAML::NodeType::Map);
+            if (!port.colorOrder.empty()) display["color_order"] = port.colorOrder;
+            if (!port.sameGeometryAsInput.empty()) display["same_geometry_as_input"] = port.sameGeometryAsInput;
+            node["display"] = display;
+        }
+    }
+    return node;
+}
+
+YAML::Node encodePorts(const std::vector<PortDefinition>& ports, bool output) {
+    YAML::Node sequence(YAML::NodeType::Sequence);
+    for (const auto& port : ports) sequence.push_back(encodePort(port, output));
+    return sequence;
+}
+
+} // namespace
+
+std::string emitNormalizedToolYaml(const ToolDefinition& definition) {
+    validateToolDefinition(definition);
+    YAML::Node node(YAML::NodeType::Map);
+    node["schema_version"] = definition.schemaVersion;
+    node["tool_id"] = definition.id;
+    node["display_name"] = definition.displayName;
+    node["version"] = definition.version;
+    node["kind"] = kindText(definition.kind);
+    if (!definition.category.empty()) node["category"] = definition.category;
+    if (!definition.subcategory.empty()) node["subcategory"] = definition.subcategory;
+
+    YAML::Node entry(YAML::NodeType::Map);
+    if (definition.kind == ToolKind::CppFunction || definition.kind == ToolKind::CppClass) {
+        entry["registry_name"] = definition.registryName;
+    } else {
+        entry["file"] = declarationRelativeText(definition.script, definition.definitionPath);
+        entry["symbol"] = definition.symbol;
+    }
+    node["entry"] = entry;
+
+    if (!definition.resources.empty()) {
+        YAML::Node resources(YAML::NodeType::Sequence);
+        for (const auto& resource : definition.resources)
+            resources.push_back(declarationRelativeText(resource, definition.definitionPath));
+        node["resources"] = resources;
+    }
+    node["init_params"] = encodePorts(definition.initParams, false);
+    node["inputs"] = encodePorts(definition.inputs, false);
+    node["outputs"] = encodePorts(definition.outputs, true);
+    return YAML::Dump(node) + "\n";
+}
+
 ModuleIndexData parseModuleIndexNode(const YAML::Node& node) {
     if (!node.IsMap()) throw ContractError("Module index YAML root must be a mapping");
     fields(node, {"schema_version", "variant", "modules", "tools", "runtime_files"}, "module index root");
