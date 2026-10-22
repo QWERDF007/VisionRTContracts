@@ -14,6 +14,19 @@ try
     const auto status = normalizeExecutionStatus({7, "\v\f", "installed detail"});
     assert(status.code == 7 && !status.message.empty() && status.detail == "installed detail");
     assert(contractSharedProbe() == 8);
+    assert(contractSharedImageReleases() == 0);
+    {
+        const auto images = contractSharedImages();
+        const auto alias  = images;
+        mutateContractSharedImages(alias);
+        assert(&images.get() == &alias.get());
+        assert(images.get().size() == 2);
+        assert(images.get()[0].at<unsigned char>(1, 2) == 73);
+        assert(images.get()[1].at<unsigned char>(1, 1) == 73);
+        assert(images.get()[1].step[0] == images.get()[0].step[0]);
+        assert(contractSharedImageReleases() == 0);
+    }
+    assert(contractSharedImageReleases() == 1);
     const PortValue rectangle = Roi::rectangle(1.25F, -2.5F, 3.75F, 4.5F, 17.5F);
     validateValue({Type::Rect}, rectangle);
     assert(typeOf(rectangle) == TypeSpec{Type::Rect});

@@ -1,18 +1,22 @@
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
+find_package(Threads REQUIRED)
 
-add_executable(test_sdk_value_contract test_sdk_value_contract.cpp)
-target_link_libraries(test_sdk_value_contract PRIVATE VisionRT::Contracts)
-if(MSVC)
-    target_compile_options(test_sdk_value_contract PRIVATE /utf-8 /UNDEBUG)
-else()
-    target_compile_options(test_sdk_value_contract PRIVATE -UNDEBUG)
-endif()
-add_test(NAME test_sdk_value_contract COMMAND test_sdk_value_contract)
+foreach(contract_test IN ITEMS test_sdk_value_contract test_data_ref_contract)
+    add_executable(${contract_test} ${contract_test}.cpp)
+    target_link_libraries(${contract_test} PRIVATE VisionRT::Contracts)
+    if(MSVC)
+        target_compile_options(${contract_test} PRIVATE /utf-8 /UNDEBUG)
+    else()
+        target_compile_options(${contract_test} PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME ${contract_test} COMMAND ${contract_test})
+endforeach()
+target_link_libraries(test_data_ref_contract PRIVATE Threads::Threads)
 
 set(_opencv_bin_dir "")
 if(WIN32 AND OpenCV_SHARED)
     set(_opencv_bin_dir "$<TARGET_FILE_DIR:opencv_core>")
-    set_tests_properties(test_sdk_value_contract PROPERTIES ENVIRONMENT_MODIFICATION
+    set_tests_properties(test_sdk_value_contract test_data_ref_contract PROPERTIES ENVIRONMENT_MODIFICATION
         "PATH=path_list_prepend:${_opencv_bin_dir}")
 endif()
 
