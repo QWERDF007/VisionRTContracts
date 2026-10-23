@@ -31,6 +31,24 @@ def run_cmd(args, cwd=None, env=None):
         sys.exit(res.returncode)
     return res
 
+def dependency_report(binary, cxx_compiler):
+    if os.name == "nt":
+        candidates = []
+        if cxx_compiler:
+            candidates.append(Path(cxx_compiler).with_name("dumpbin.exe"))
+        found = shutil.which("dumpbin")
+        if found:
+            candidates.append(Path(found))
+        for candidate in candidates:
+            if candidate.is_file():
+                return run_cmd([str(candidate), "/dependents", str(binary)]).stdout
+        print("[Install Test] dumpbin unavailable; dependency check skipped")
+        return ""
+    if sys.platform == "darwin":
+        return run_cmd(["otool", "-L", str(binary)]).stdout
+    return run_cmd(["ldd", str(binary)]).stdout
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", required=True)
@@ -112,6 +130,14 @@ def main():
         if not bin_path.is_file():
             bin_path = consumer_build / args.config / binary_name
         assert bin_path.is_file(), f"Consumer binary not found at {bin_path}"
+
+        print("[Install Test] Checking consumer dependencies...")
+        report = dependency_report(bin_path, args.cxx_compiler)
+        if report:
+            forbidden = ("qt6", "qt5", "yaml", "python", "cudart", "inferrt", "nvinfer", "tensorrt")
+            lowered = report.lower()
+            leaked = [name for name in forbidden if name in lowered]
+            assert not leaked, f"Installed consumer leaked host dependencies: {leaked}"
 
         runtime_paths = ([str(Path(os.environ["SystemRoot"]) / "System32"), os.environ["SystemRoot"]]
                          if os.name == "nt" else os.get_exec_path())
