@@ -132,7 +132,11 @@ def main():
         assert bin_path.is_file(), f"Consumer binary not found at {bin_path}"
 
         print("[Install Test] Checking consumer dependencies...")
-        report = dependency_report(bin_path, args.cxx_compiler)
+        targets = [bin_path]
+        targets.extend(sorted(bin_path.parent.glob("*.dll")))
+        targets.extend(sorted(bin_path.parent.glob("*.so*")))
+        reports = [dependency_report(target, args.cxx_compiler) for target in targets]
+        report = "\n".join(text for text in reports if text)
         if report:
             forbidden = ("qt6", "qt5", "yaml", "python", "cudart", "inferrt", "nvinfer", "tensorrt")
             lowered = report.lower()
