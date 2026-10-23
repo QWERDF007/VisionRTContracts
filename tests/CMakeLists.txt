@@ -24,4 +24,5 @@ add_test(NAME test_isolated_installation
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_isolated_installation.py"
         --build-dir "${CMAKE_BINARY_DIR}" --config "$<CONFIG>"
         --opencv-dir "${OpenCV_DIR}" --opencv-bin "${_opencv_bin_dir}"
-        --make-program "${CMAKE_MAKE_PROGRAM}" --cxx-compiler "${CMAKE_CXX_COMPILER}")
+        --make-program "${CMAKE_MAKE_PROGRAM}" --cxx-compiler "${CMAKE_CXX_COMPILER}"
+        --generator "${CMAKE_GENERATOR}" --generator-platform "${CMAKE_GENERATOR_PLATFORM}")

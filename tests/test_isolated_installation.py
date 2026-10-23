@@ -39,6 +39,8 @@ def main():
     parser.add_argument("--opencv-bin", default="")
     parser.add_argument("--make-program", default="")
     parser.add_argument("--cxx-compiler", default="")
+    parser.add_argument("--generator", default="Ninja")
+    parser.add_argument("--generator-platform", default="")
     args = parser.parse_args()
 
     cmake_bin = find_cmake()
@@ -80,19 +82,23 @@ def main():
             cmake_bin,
             "-B", str(consumer_build),
             "-S", str(consumer_src),
-            "-G", "Ninja",
-            f"-DCMAKE_BUILD_TYPE={args.config}",
+            "-G", args.generator,
             f"-DCMAKE_PREFIX_PATH={prefix_arg}"
         ]
+        if args.generator_platform:
+            config_cmd.extend(["-A", args.generator_platform])
+        if not args.generator.startswith("Visual Studio"):
+            config_cmd.append(f"-DCMAKE_BUILD_TYPE={args.config}")
         config_cmd.extend([
             f"-DVisionRTContracts_DIR={install_prefix / 'lib' / 'cmake' / 'VisionRTContracts'}",
             "-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF",
             "-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF",
         ])
-        if args.make_program:
-            config_cmd.append(f"-DCMAKE_MAKE_PROGRAM={args.make_program}")
-        if args.cxx_compiler:
-            config_cmd.append(f"-DCMAKE_CXX_COMPILER={args.cxx_compiler}")
+        if not args.generator.startswith("Visual Studio"):
+            if args.make_program:
+                config_cmd.append(f"-DCMAKE_MAKE_PROGRAM={args.make_program}")
+            if args.cxx_compiler:
+                config_cmd.append(f"-DCMAKE_CXX_COMPILER={args.cxx_compiler}")
 
         run_cmd(config_cmd)
 
