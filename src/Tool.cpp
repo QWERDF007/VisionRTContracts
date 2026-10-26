@@ -19,18 +19,16 @@ ToolStatus executionSuccess(std::string message) {
     return {0, std::move(message)};
 }
 
-ToolStatus normalizeExecutionStatus(ToolStatus status) {
-    if (!isBlankMessage(status.message)) {
-        return status;
+ToolResult toolResult(Values outputs, ToolStatus status) {
+    // The contract has one status message and no separate detail channel, so a detail the tool
+    // attached is carried in that message instead of being dropped.
+    if (!status.detail.empty()) {
+        status.message = status.message.empty() ? std::move(status.detail)
+                                                : status.message + "\n" + status.detail;
     }
-    if (status.code == 0) {
-        status.message = "运行成功";
-    } else if (status.code == kCancelledStatus) {
-        status.message = "运行已取消";
-    } else {
-        status.message = "运行失败（错误码：" + std::to_string(status.code) + "）";
-    }
-    return status;
+    outputs[std::string(kStatusCodePort)]    = status.code;
+    outputs[std::string(kStatusMessagePort)] = std::move(status.message);
+    return ToolResult{std::move(outputs)};
 }
 
 } // namespace visionrt

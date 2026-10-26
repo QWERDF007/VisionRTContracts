@@ -14,6 +14,13 @@ using Values = std::map<std::string, PortValue, std::less<>>;
 // Host-owned cancellation result; tool authors never return it as a business code.
 inline constexpr std::int64_t kCancelledStatus = -5;
 
+// Canonical ports every contract carries. They are materialised by the host and never written by
+// a declaration file, but they are ordinary ports: tools receive upstream_status as an input and
+// fill both status keys as outputs.
+inline constexpr std::string_view kUpstreamStatusPort = "upstream_status";
+inline constexpr std::string_view kStatusCodePort     = "__status_code";
+inline constexpr std::string_view kStatusMessagePort  = "__status_message";
+
 struct ToolStatus {
     std::int64_t code = 0;
     std::string message;
@@ -23,16 +30,19 @@ struct ToolStatus {
 
 VT_EXPORT bool isBlankMessage(std::string_view message) noexcept;
 
-// A successful execution status; a blank message becomes 运行成功.
+// A successful lifecycle status; a blank message becomes 运行成功.
 VT_EXPORT ToolStatus executionSuccess(std::string message = "运行成功");
 
-// Applies the shared execution-status rule to a final execute result.
-VT_EXPORT ToolStatus normalizeExecutionStatus(ToolStatus status);
-
+// The single execution result. Every declared output port is present, including the two status
+// ports the tool writes itself: the host neither synthesises nor rewrites an entry. Framework
+// failures never reach a tool result; they are reported as NodeDiagnostic and NodeDisposition.
 struct ToolResult {
-    ToolStatus status;
     Values outputs;
 };
+
+// Single construction point for a complete output set: business values plus the two status keys.
+// The status stays the tool's own decision; this only guarantees one spelling of the key set.
+VT_EXPORT ToolResult toolResult(Values outputs, ToolStatus status);
 
 class PathResolver {
 public:

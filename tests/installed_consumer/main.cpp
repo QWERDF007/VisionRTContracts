@@ -10,7 +10,7 @@ using namespace visionrt;
 int main()
 try
 {
-    static_assert(MODULE_ABI_MAJOR == 4);
+    static_assert(MODULE_ABI_MAJOR == 5);
     const auto status = normalizeExecutionStatus({7, "\v\f", "installed detail"});
     assert(status.code == 7 && !status.message.empty() && status.detail == "installed detail");
     assert(contractSharedProbe() == 4);
