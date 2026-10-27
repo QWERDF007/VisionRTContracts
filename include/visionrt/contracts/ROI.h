@@ -21,6 +21,12 @@ enum class RoiKind
 };
 
 VT_EXPORT void    validateRoi(std::span<const double> encoded);
+
+// Bounding box of an encoded ROI after mapping it through a row-major 3x3 reference-to-image
+// matrix. Circles keep their shape by scaling the radius, so a rotated or scaled alignment never
+// turns a nearby shape into a distant one. Returns {minimum, maximum} in the target frame.
+VT_EXPORT std::array<cv::Point2d, 2> transformedRoiBounds(std::span<const double> encoded,
+                                                         std::span<const double> matrix);
 VT_EXPORT RoiKind roiKind(std::span<const double> encoded);
 VT_EXPORT std::array<cv::Point2d, 4> rectangleCorners(std::span<const double> encoded);
 

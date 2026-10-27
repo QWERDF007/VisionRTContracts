@@ -1,6 +1,7 @@
 #include "visionrt/contracts/ROI.h"
 #include "visionrt/contracts/TypeSpec.h"
 
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 
@@ -81,6 +82,51 @@ std::array<cv::Point2d, 4> rectangleCorners(std::span<const double> encoded)
         point.y           = centerY + sine * oldX + cosine * point.y;
     }
     return corners;
+}
+
+std::array<cv::Point2d, 2> transformedRoiBounds(std::span<const double> encoded, std::span<const double> matrix)
+{
+    if (matrix.size() != 9)
+        throw ContractError("ROI transform requires a 3x3 matrix");
+    const auto map = [&](cv::Point2d point)
+    {
+        const double w = matrix[6] * point.x + matrix[7] * point.y + matrix[8];
+        const double d = w == 0.0 ? 1.0 : w;
+        return cv::Point2d{(matrix[0] * point.x + matrix[1] * point.y + matrix[2]) / d,
+                           (matrix[3] * point.x + matrix[4] * point.y + matrix[5]) / d};
+    };
+    std::vector<cv::Point2d> mapped;
+    switch (roiKind(encoded))
+    {
+    case RoiKind::Circle:
+    {
+        const cv::Point2d center = map({encoded[1], encoded[2]});
+        const cv::Point2d edge   = map({encoded[1] + encoded[3], encoded[2]});
+        const double      radius = std::hypot(edge.x - center.x, edge.y - center.y);
+        mapped = {{center.x - radius, center.y - radius}, {center.x + radius, center.y + radius}};
+        break;
+    }
+    case RoiKind::Rectangle:
+        for (const auto &corner : rectangleCorners(encoded))
+            mapped.push_back(map(corner));
+        break;
+    default:
+        for (std::size_t index = 1; index + 1 < encoded.size(); index += 2)
+            mapped.push_back(map({encoded[index], encoded[index + 1]}));
+        break;
+    }
+    if (mapped.empty())
+        throw ContractError("ROI has no geometry to transform");
+    cv::Point2d minimum = mapped.front();
+    cv::Point2d maximum = mapped.front();
+    for (const auto &point : mapped)
+    {
+        minimum.x = std::min(minimum.x, point.x);
+        minimum.y = std::min(minimum.y, point.y);
+        maximum.x = std::max(maximum.x, point.x);
+        maximum.y = std::max(maximum.y, point.y);
+    }
+    return {minimum, maximum};
 }
 
 }
