@@ -12,7 +12,13 @@ endif()
 
 add_library(VisionRTContracts STATIC src/Tool.cpp src/TypeSpec.cpp src/ROI.cpp src/Value.cpp)
 add_library(VisionRT::Contracts ALIAS VisionRTContracts)
-set_target_properties(VisionRTContracts PROPERTIES EXPORT_NAME Contracts)
+set_target_properties(VisionRTContracts PROPERTIES
+    EXPORT_NAME Contracts
+    VISIONRT_CONTRACTS_VERSION "${PROJECT_VERSION}"
+)
+if(NOT PROJECT_IS_TOP_LEVEL)
+    set(VISIONRT_CONTRACTS_VERSION "${PROJECT_VERSION}" PARENT_SCOPE)
+endif()
 target_compile_features(VisionRTContracts PUBLIC cxx_std_20)
 target_include_directories(VisionRTContracts PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
