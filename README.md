@@ -1,6 +1,6 @@
 # VisionRTContracts
 
-C++20 工具接口与 owned 值契约。公共接口见 [include/visionrt/contracts](include/visionrt/contracts)，源码与验证入口见 [文档索引](docs/README.md)。
+C++20 工具接口与共享可写值契约。公共接口见 [include/visionrt/contracts](include/visionrt/contracts)，源码与验证入口见 [文档索引](docs/README.md)。
 
 ## 构建与安装
 

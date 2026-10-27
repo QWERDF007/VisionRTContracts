@@ -10,23 +10,54 @@ using namespace visionrt;
 int main()
 try
 {
-    static_assert(MODULE_ABI_MAJOR == 3);
+    static_assert(MODULE_ABI_MAJOR == 5);
     const auto status = normalizeExecutionStatus({7, "\v\f", "installed detail"});
     assert(status.code == 7 && !status.message.empty() && status.detail == "installed detail");
-    assert(contractSharedProbe() == 8);
-    const PortValue rectangle = Roi::rectangle(1.25F, -2.5F, 3.75F, 4.5F, 17.5F);
-    validateValue({Type::Rect}, rectangle);
-    assert(typeOf(rectangle) == TypeSpec{Type::Rect});
+    assert(contractSharedProbe() == 4);
+    assert(contractSharedImageReleases() == 0);
+    {
+        const auto images = contractSharedImages();
+        const auto alias  = images;
+        mutateContractSharedImages(alias);
+        assert(&images.get() == &alias.get());
+        assert(images.get().size() == 2);
+        assert(images.get()[0].at<unsigned char>(1, 2) == 73);
+        assert(images.get()[1].at<unsigned char>(1, 1) == 73);
+        assert(images.get()[1].step[0] == images.get()[0].step[0]);
+        assert(contractSharedImageReleases() == 0);
+    }
+    assert(contractSharedImageReleases() == 1);
+    const auto array = contractSharedArray();
+    validateValue({Type::Array, DType::String, 3}, array);
+    const auto arrayAlias                               = array;
+    using Strings                                       = NestedVector<std::string, 3>;
+    std::get<Array>(arrayAlias).get<Strings>()[0][0][0] = "消费者修改";
+    assert(std::get<Array>(array).get<Strings>()[0][0][0] == "消费者修改");
+    const auto regions = contractSharedRoi();
+    validateValue({Type::ROI}, regions);
+    assert(std::get<DataRef<ROI>>(regions).get()[0][0][1] == 16777217.125);
+    const auto regionsAlias = regions;
+    std::get<DataRef<ROI>>(regionsAlias).get()[0][0][1] += 0.25;
+    assert(std::get<DataRef<ROI>>(regions).get()[0][0][1] == 16777217.375);
+    const PortValue rectangle = DataRef<ROI>(ROI{{{2, 1.25, -2.5, 3.75, 4.5, 17.5}}});
+    validateValue({Type::ROI}, rectangle);
+    assert(typeOf(rectangle) == TypeSpec{Type::ROI});
     const auto integer = parseInt64("9007199254740993");
     assert(integer == 9007199254740993LL);
     assert(formatInt64(integer) == "9007199254740993");
-    ImageBatch retained;
+    Image retained;
     {
-        const auto source = OwnedImage::take(cv::Mat(3, 7, CV_8UC1, cv::Scalar(17)));
-        retained          = ImageBatch({source.region({1, 0, 4, 3})});
+        const cv::Mat source(3, 7, CV_8UC1, cv::Scalar(17));
+        retained = {source(cv::Rect(1, 0, 4, 3))};
     }
-    assert(retained.images()[0].readOnlyMat().at<unsigned char>(2, 3) == 17);
-    validateValue({Type::ImageBatch}, retained);
+    assert(retained[0].at<unsigned char>(2, 3) == 17);
+    validateValue({Type::Image}, DataRef<Image>(std::move(retained)));
+    for (const auto &type : Array::supportedTypes())
+    {
+        auto value = Array::empty(*type.dtype, type.rank);
+        validateValue(type, value);
+        assert(typeOf(value) == type);
+    }
     std::cout << "Installed value ownership and tool interface verified\n";
     return 0;
 }

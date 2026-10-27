@@ -113,7 +113,7 @@ if "%DO_CLEAN%"=="1" (
 )
 
 if not exist "%BUILD_DIR%\CMakeCache.txt" (
-    echo [INFO] Configuring VisionRTToolSDK (Ninja, %CONFIG%)
+    echo [INFO] Configuring VisionRTContracts (Ninja, %CONFIG%)
     cmake -B "%BUILD_DIR%" -G Ninja -DCMAKE_BUILD_TYPE=%CONFIG%
     if errorlevel 1 (
         echo [ERROR] CMake configuration failed.
@@ -122,16 +122,12 @@ if not exist "%BUILD_DIR%\CMakeCache.txt" (
     )
 )
 
-echo [INFO] Building VisionRTToolSDK (%CONFIG%)
+echo [INFO] Building VisionRTContracts (%CONFIG%)
 cmake --build "%BUILD_DIR%" --config %CONFIG%
 if errorlevel 1 (
     echo [ERROR] Build failed.
     popd
     exit /b 1
-)
-
-if exist "D:\Software\opencv\build\x64\vc16\bin" (
-    set "PATH=D:\Software\opencv\build\x64\vc16\bin;%PATH%"
 )
 
 if "%DO_TEST%"=="1" (
