@@ -1,7 +1,8 @@
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 find_package(Threads REQUIRED)
 
-foreach(contract_test IN ITEMS test_sdk_value_contract test_data_ref_contract test_array_contract)
+foreach(contract_test IN ITEMS test_sdk_value_contract test_data_ref_contract test_array_contract
+        test_sdk_function_tool test_sdk_parameters)
     add_executable(${contract_test} ${contract_test}.cpp)
     target_link_libraries(${contract_test} PRIVATE VisionRT::Contracts)
     if(MSVC)
@@ -16,7 +17,8 @@ target_link_libraries(test_data_ref_contract PRIVATE Threads::Threads)
 set(_opencv_bin_dir "")
 if(WIN32 AND OpenCV_SHARED)
     set(_opencv_bin_dir "$<TARGET_FILE_DIR:opencv_core>")
-    set_tests_properties(test_sdk_value_contract test_data_ref_contract test_array_contract PROPERTIES ENVIRONMENT_MODIFICATION
+    set_tests_properties(test_sdk_value_contract test_data_ref_contract test_array_contract
+        test_sdk_function_tool test_sdk_parameters PROPERTIES ENVIRONMENT_MODIFICATION
         "PATH=path_list_prepend:${_opencv_bin_dir}")
 endif()
 

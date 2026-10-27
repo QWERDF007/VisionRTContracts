@@ -150,15 +150,27 @@ try
     for (const auto *blank : {"", " ", "\t\r\n", "\v\f"})
     {
         assert(isBlankMessage(blank));
-        const auto success = normalizeExecutionStatus({0, blank, "raw success"});
-        assert(success.message == "运行成功" && success.detail == "raw success");
-        const auto failure = normalizeExecutionStatus({17, blank, "raw failure"});
-        assert(failure.code == 17 && failure.message == "运行失败（错误码：17）");
-        assert(normalizeExecutionStatus(failure).message == failure.message);
-        assert(normalizeExecutionStatus({kCancelledStatus, blank}).message == "运行已取消");
+        assert(executionSuccess(blank).message == "运行成功");
     }
-    assert(normalizeExecutionStatus({9, "业务失败", "technical"}).message == "业务失败");
-    std::cout << "ABI4 writable value, double ROI and scalar contracts verified\n";
+    assert(!isBlankMessage("业务失败"));
+    assert(executionSuccess("业务完成").message == "业务完成");
+
+    // A tool result carries every value the tool produced, status keys included, and the host
+    // preserves the code and message exactly as returned.
+    const auto complete = toolResult({{"value", std::int64_t{9}}}, {17, "", "technical"});
+    assert(complete.outputs.size() == 3);
+    assert(std::get<std::int64_t>(complete.outputs.at("value")) == 9);
+    assert(std::get<std::int64_t>(complete.outputs.at(std::string(kStatusCodePort))) == 17);
+    assert(std::get<std::string>(complete.outputs.at(std::string(kStatusMessagePort))) == "technical");
+
+    const auto blank = toolResult({}, {0, ""});
+    assert(std::get<std::string>(blank.outputs.at(std::string(kStatusMessagePort))).empty());
+    const auto negative = toolResult({}, {-5, "业务负数"});
+    assert(std::get<std::int64_t>(negative.outputs.at(std::string(kStatusCodePort))) == -5);
+    assert(std::get<std::string>(negative.outputs.at(std::string(kStatusMessagePort))) == "业务负数");
+    assert(kCancelledStatus == -5);
+
+    std::cout << "ABI5 writable value, ROI, result and scalar contracts verified\n";
     return 0;
 }
 catch (const std::exception& error) {
