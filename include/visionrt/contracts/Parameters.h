@@ -367,8 +367,8 @@ public:
     {
         OutputWriter writer;
         writeFields(writer);
-        if (const auto &issue = writer.firstIssue(); issue && status)
-            status = {kContractViolationStatus, "工具输出端口契约不通过", issue->describe()};
+        if (const auto &issue = writer.firstIssue(); issue)
+            throw ContractError("工具输出端口契约不通过: " + issue->describe());
         return toolResult(writer.take(), status);
     }
 

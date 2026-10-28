@@ -139,19 +139,19 @@ try
     outputs.images = image;
     outputs.status = {7, "业务失败"};
     const auto packed = outputs.pack();
-    assert(packed.status.code == 7 && packed.status.message == "业务失败");
+    assert(std::get<std::int64_t>(packed.outputs.at(std::string(kStatusCodePort))) == 7); assert(std::get<std::string>(packed.outputs.at(std::string(kStatusMessagePort))) == "业务失败");
     assert(std::get<DataRef<Image>>(packed.outputs.at("images")).get().size() == 1);
     assert(isMissing(packed.outputs.at("applied_mask")));
-    assert(!packed.outputs.contains(std::string(kStatusCodePort)));
+
     assert(weak.lock() != nullptr);
 
-    BadOutputs reserved;
-    const auto rejected = reserved.pack();
-    assert(rejected.status.code == kContractViolationStatus);
-    assert(rejected.status.detail.find("__status_code") != std::string::npos);
-    BadOutputs duplicate;
-    duplicate.mode = BadOutputs::Mode::Duplicate;
-    assert(duplicate.pack().status.detail.find("重复") != std::string::npos);
+    for (std::int64_t code : {0, 7}) { BadOutputs reserved; reserved.status = {code, "test"}; bool caughtReserved = false; try { reserved.pack(); } catch (const ContractError &err) { caughtReserved = std::string(err.what()).find("__status_code") != std::string::npos; } assert(caughtReserved); BadOutputs duplicate; duplicate.mode = BadOutputs::Mode::Duplicate; duplicate.status = {code, "test"}; bool caughtDuplicate = false; try { duplicate.pack(); } catch (const ContractError &err) { caughtDuplicate = std::string(err.what()).find("重复") != std::string::npos; } assert(caughtDuplicate); }
+
+
+
+
+
+
 
     // The writer rejects a duplicate immediately and keeps the first value.
     OutputWriter writer;

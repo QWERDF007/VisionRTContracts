@@ -98,8 +98,12 @@ try
     const auto first  = run(registry, "test.function.add_one", {{"value", std::int64_t{1}}});
     const auto second = run(registry, "test.function.add_one", {{"value", std::int64_t{41}}});
     assert(std::get<std::int64_t>(first.outputs.at("result")) == 2);
+    assert(std::get<std::int64_t>(first.outputs.at(std::string(kStatusCodePort))) == 0);
+    assert(std::get<std::string>(first.outputs.at(std::string(kStatusMessagePort))) == "运行成功");
     assert(std::get<std::int64_t>(second.outputs.at("result")) == 42);
     assert(std::get<std::int64_t>(first.outputs.at("result")) == 2);
+    assert(std::get<std::int64_t>(first.outputs.at(std::string(kStatusCodePort))) == 0);
+    assert(std::get<std::string>(first.outputs.at(std::string(kStatusMessagePort))) == "运行成功");
 
     // A class keeps its instance counter, which is exactly why stateful tools stay classes.
     const auto counting = run(registry, "test.class.counter", {});

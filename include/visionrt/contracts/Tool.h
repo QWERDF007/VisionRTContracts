@@ -18,13 +18,11 @@ using Values = std::map<std::string, PortValue, std::less<>>;
 // Host-owned cancellation result; tool authors never return it as a business code.
 inline constexpr std::int64_t kCancelledStatus = -5;
 
-// Reserved negative code for a tool that broke the wire contract itself (a reserved port in its
-// output set, a duplicate write, a malformed lifecycle answer). It is not a business outcome.
+// Reserved negative code for a tool that broke the wire contract itself.
 inline constexpr std::int64_t kContractViolationStatus = -1;
 
-// Canonical ports every contract carries. They belong to the host: a node materialises them from
-// the tool's ToolStatus after execute() returned, so a tool never writes them itself. They stay
-// ordinary declared ports for wiring, readback and the existing output view.
+// Canonical ports every contract carries. Tool output packs __status_code and __status_message into
+// outputs; they stay ordinary declared ports for wiring, readback and the existing output view.
 inline constexpr std::string_view kUpstreamStatusPort = "upstream_status";
 inline constexpr std::string_view kStatusCodePort     = "__status_code";
 inline constexpr std::string_view kStatusMessagePort  = "__status_message";
@@ -46,13 +44,11 @@ VT_EXPORT bool isBlankMessage(std::string_view message) noexcept;
 // A successful lifecycle status; a blank message becomes 运行成功.
 VT_EXPORT ToolStatus executionSuccess(std::string message = "运行成功");
 
-// The single execution result. `outputs` holds the declared business ports only; `status` is the
-// tool's whole answer about the execution and the single source of truth for the two status ports
-// the host publishes. Framework failures never reach a tool result: they are reported as
-// NodeDiagnostic and NodeDisposition.
+// The single execution result. `outputs` holds the declared business ports plus __status_code and
+// __status_message; `detail` carries technical detail for diagnostics/logs and stays separate.
 struct ToolResult {
-    Values     outputs;
-    ToolStatus status;
+    Values      outputs;
+    std::string detail;
 };
 
 VT_EXPORT ToolResult toolResult(Values outputs, ToolStatus status = {});

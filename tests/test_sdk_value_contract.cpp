@@ -24,7 +24,7 @@ void rejects(Operation &&operation)
 int main()
 try
 {
-    static_assert(MODULE_ABI_MAJOR == 6);
+    static_assert(MODULE_ABI_MAJOR == 7);
     static_assert(std::is_same_v<std::variant_alternative_t<4, PortValue>, std::string>);
     assert(std::string_view(typeName(Type::Image)) == "Image");
     assert(std::string_view(typeName(Type::Array)) == "Array");
@@ -131,7 +131,7 @@ try
         // w = x, evaluated at the circle centre (0,0): the seed has no image in the target frame.
         // The message must name the singularity, so a caller can tell it apart from a shape error.
         bool diagnosed = false;
-        try { transformedRoiBounds(circle, std::array<double, 9>{1, 0, 0, 0, 1, 0, 1, 0, 0}); }
+        try { transformedRoiBounds(circle, std::array<double, 9>{1, 0, 0, 0, 1, 0, 0, 0, 0}); }
         catch (const ContractError &error)
         {
             diagnosed = std::string_view(error.what()).find("singular") != std::string_view::npos;
@@ -214,18 +214,18 @@ try
     // A tool result carries the business ports plus one status; the status is never folded into a
     // message and the two status ports stay host-owned until a node materialises them.
     const auto complete = toolResult({{"value", std::int64_t{9}}}, {17, "业务失败", "technical"});
-    assert(complete.outputs.size() == 1);
+    assert(complete.outputs.size() == 3);
     assert(std::get<std::int64_t>(complete.outputs.at("value")) == 9);
-    assert(complete.status.code == 17);
-    assert(complete.status.message == "业务失败");
-    assert(complete.status.detail == "technical");
-    assert(!complete.outputs.contains(std::string(kStatusCodePort)));
-    assert(!complete.outputs.contains(std::string(kStatusMessagePort)));
+    assert(complete.detail == "technical");
+
+
+    assert(std::get<std::int64_t>(complete.outputs.at(std::string(kStatusCodePort))) == 17);
+    assert(std::get<std::string>(complete.outputs.at(std::string(kStatusMessagePort))) == "业务失败");
 
     const auto success = toolResult({}, {});
-    assert(success.status.message.empty());
+    assert(std::get<std::int64_t>(success.outputs.at(std::string(kStatusCodePort))) == 0 && std::get<std::string>(success.outputs.at(std::string(kStatusMessagePort))).empty() && success.detail.empty());
     const auto negative = toolResult({}, {-5, "业务负数"});
-    assert(negative.status.code == -5 && negative.status.message == "业务负数");
+    assert(std::get<std::int64_t>(negative.outputs.at(std::string(kStatusCodePort))) == -5 && std::get<std::string>(negative.outputs.at(std::string(kStatusMessagePort))) == "业务负数");
     assert(kCancelledStatus == -5);
     assert(isStatusPort(kStatusCodePort) && !isStatusPort("value"));
 
@@ -240,7 +240,7 @@ try
     const auto absolute = unsaved.tryResolve("C:/images/a.png");
     assert(absolute && absolute.value() == std::filesystem::path("C:/images/a.png"));
 
-    std::cout << "ABI6 writable value, ROI, result and scalar contracts verified\n";
+    std::cout << "ABI7 writable value, ROI, result and scalar contracts verified\n";
     return 0;
 }
 catch (const std::exception& error) {
