@@ -90,6 +90,61 @@ try
         rejects([&] { validateRoi(bad); });
     rejects([] { rectangleCorners(std::array{0.0, 1.0, 2.0}); });
 
+    // ROI transforms: a circle keeps its true ellipse extent under a non-uniform alignment, and a
+    // projective singularity is reported instead of being replaced by a coordinate that looks real.
+    const std::vector<double>   circle{3.0, 0.0, 0.0, 5.0};
+    const std::array<double, 9> identityMatrix{1, 0, 0, 0, 1, 0, 0, 0, 1};
+    {
+        const auto box = transformedRoiBounds(circle, identityMatrix);
+        assert(box[0] == cv::Point2d(-5.0, -5.0) && box[1] == cv::Point2d(5.0, 5.0));
+    }
+    {
+        // x scaled by two, y untouched: a 2:1 ellipse, not a circle of radius ten.
+        const std::array<double, 9> stretched{2, 0, 0, 0, 1, 0, 0, 0, 1};
+        const auto                  box = transformedRoiBounds(circle, stretched);
+        assert(box[0] == cv::Point2d(-10.0, -5.0) && box[1] == cv::Point2d(10.0, 5.0));
+    }
+    {
+        // Shear x' = x + 2y: the x half-extent grows to r*sqrt(5) while y stays r.
+        const std::array<double, 9> shear{1, 2, 0, 0, 1, 0, 0, 0, 1};
+        const auto                  box = transformedRoiBounds(circle, shear);
+        assert(std::abs(box[1].x - 5.0 * std::sqrt(5.0)) < 1e-12);
+        assert(std::abs(box[0].x + 5.0 * std::sqrt(5.0)) < 1e-12);
+        assert(std::abs(box[1].y - 5.0) < 1e-12 && std::abs(box[0].y + 5.0) < 1e-12);
+    }
+    {
+        // A quarter turn moves the centre without changing the extent.
+        const std::array<double, 9> quarter{0, -1, 0, 1, 0, 0, 0, 0, 1};
+        const auto                  box = transformedRoiBounds(circle, quarter);
+        assert(std::abs(box[0].x + 5.0) < 1e-12 && std::abs(box[0].y + 5.0) < 1e-12);
+        assert(std::abs(box[1].x - 5.0) < 1e-12 && std::abs(box[1].y - 5.0) < 1e-12);
+    }
+    {
+        // The same transform written with a homogeneous scale of four must land in the same frame.
+        const std::array<double, 9> homogeneous{4, 0, 12, 0, 4, 8, 0, 0, 4};
+        const auto                  box = transformedRoiBounds(circle, homogeneous);
+        assert(std::abs(box[0].x + 2.0) < 1e-12 && std::abs(box[0].y + 3.0) < 1e-12);
+        assert(std::abs(box[1].x - 8.0) < 1e-12 && std::abs(box[1].y - 7.0) < 1e-12);
+    }
+    {
+        // w = x, evaluated at the circle centre (0,0): the seed has no image in the target frame.
+        // The message must name the singularity, so a caller can tell it apart from a shape error.
+        bool diagnosed = false;
+        try { transformedRoiBounds(circle, std::array<double, 9>{1, 0, 0, 0, 1, 0, 1, 0, 0}); }
+        catch (const ContractError &error)
+        {
+            diagnosed = std::string_view(error.what()).find("singular") != std::string_view::npos;
+        }
+        assert(diagnosed);
+    }
+    // A non-finite matrix entry, and an affine matrix whose extents overflow, are both rejected
+    // rather than returned as an infinite box.
+    rejects([&] {
+        transformedRoiBounds(circle, std::array<double, 9>{1, 0, 0, 0, 1, 0, 0, 0,
+                                                           std::numeric_limits<double>::quiet_NaN()});
+    });
+    rejects([&] { transformedRoiBounds(circle, std::array<double, 9>{1e308, 0, 0, 0, 1, 0, 0, 0, 1e-308}); });
+
     const DataRef<Image> images(Image{cv::Mat(3, 7, CV_8UC1, cv::Scalar(17))});
     const auto           alias            = images;
     alias.get()[0].at<std::uint8_t>(2, 6) = 31;
