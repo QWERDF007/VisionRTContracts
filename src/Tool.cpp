@@ -20,15 +20,9 @@ ToolStatus executionSuccess(std::string message) {
 }
 
 ToolResult toolResult(Values outputs, ToolStatus status) {
-    // The contract has one status message and no separate detail channel, so a detail the tool
-    // attached is carried in that message instead of being dropped.
-    if (!status.detail.empty()) {
-        status.message = status.message.empty() ? std::move(status.detail)
-                                                : status.message + "\n" + status.detail;
-    }
-    outputs[std::string(kStatusCodePort)]    = status.code;
-    outputs[std::string(kStatusMessagePort)] = std::move(status.message);
-    return ToolResult{std::move(outputs)};
+    // Message and detail stay separate all the way to the host: the tool describes what happened,
+    // the detail stays technical, and neither is folded into the other.
+    return ToolResult{std::move(outputs), std::move(status)};
 }
 
 } // namespace visionrt

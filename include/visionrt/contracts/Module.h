@@ -6,7 +6,8 @@
 
 namespace visionrt {
 
-constexpr std::uint32_t MODULE_ABI_MAJOR = 5;
+// 6: ToolResult carries its own ToolStatus and no longer injects status ports.
+constexpr std::uint32_t MODULE_ABI_MAJOR = 6;
 
 struct ModuleApi {
     std::uint32_t abi_major;

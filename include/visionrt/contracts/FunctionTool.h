@@ -25,12 +25,12 @@ IToolInstance *VT_CALL createWith(Factory factory, ToolStatus *status) noexcept
     catch (const std::exception &error)
     {
         if (status)
-            *status = {-3, "工具实例创建失败", error.what()};
+            *status = {kContractViolationStatus, "工具实例创建失败", error.what()};
     }
     catch (...)
     {
         if (status)
-            *status = {-3, "工具实例创建发生未知异常"};
+            *status = {kContractViolationStatus, "工具实例创建发生未知异常"};
     }
     return nullptr;
 }
@@ -58,7 +58,7 @@ public:
     {
         // Configuration belongs to the call's inputs. Accepting init parameters here would hide a
         // declaration/author mismatch instead of reporting it.
-        return initParams.empty() ? ToolStatus{} : ToolStatus{1, "函数工具不接受初始化参数"};
+        return initParams.empty() ? ToolStatus{} : ToolStatus{kContractViolationStatus, "函数工具不接受初始化参数"};
     }
 
     ToolResult execute(const Values &inputs) override
@@ -83,7 +83,7 @@ IToolInstance *VT_CALL createFunction(const ToolServices *services, ToolStatus *
     if (!services)
     {
         if (status)
-            *status = {-3, "工具服务不能为空"};
+            *status = {kContractViolationStatus, "工具服务不能为空"};
         return nullptr;
     }
     return createWith([&] { return new FunctionToolInstance<Function>(*services); }, status);
@@ -95,7 +95,7 @@ IToolInstance *VT_CALL createClass(const ToolServices *services, ToolStatus *sta
     if (!services)
     {
         if (status)
-            *status = {-3, "工具服务不能为空"};
+            *status = {kContractViolationStatus, "工具服务不能为空"};
         return nullptr;
     }
     return createWith([&] { return new Tool(*services); }, status);

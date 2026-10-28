@@ -27,7 +27,9 @@ ToolResult addOne(const Values &inputs, const ToolServices &)
 {
     InputReader reader(inputs);
     const auto  value = reader.integer("value");
-    return toolResult({{"result", value + 1}}, {0, ""});
+    if (!value)
+        return toolResult({{"result", Missing{}}}, {1001, "输入缺失", value.issue().describe()});
+    return toolResult({{"result", value.value() + 1}}, executionSuccess());
 }
 
 ToolResult failLoudly(const Values &, const ToolServices &)

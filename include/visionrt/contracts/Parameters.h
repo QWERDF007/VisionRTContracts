@@ -4,6 +4,10 @@
 // schedule work, parse JSON, resolve declarations or copy image pixels. A tool declares its own
 // fields as typed members and keeps the business decisions (upstream status policy, missing input
 // handling, in-place versus new output) in its own code.
+//
+// Nothing here throws for a bad port: every read answers with a value or a PortIssue, and every
+// write answers with an issue only when the write was rejected. The numeric business code a tool
+// reports for that issue is the tool's own decision.
 
 #include "visionrt/contracts/Tool.h"
 
@@ -81,90 +85,99 @@ public:
     // True only when a usable (non-Missing) value is present.
     bool present(std::string_view id) const noexcept
     {
-        const auto *value = find(id);
-        return value != nullptr;
+        return find(id) != nullptr;
     }
 
-    std::int64_t integer(std::string_view id) const
+    // Raw access for ports a tool inspects without committing to one payload kind. Null means the
+    // port is absent or explicitly Missing.
+    const PortValue *find(std::string_view id) const noexcept
     {
-        return cast<std::int64_t>(require(id), id, Type::Int);
+        const auto found = values_.find(id);
+        return found == values_.end() || isMissing(found->second) ? nullptr : &found->second;
     }
 
-    double real(std::string_view id) const
+    ReadResult<std::int64_t> integer(std::string_view id) const
     {
-        return cast<double>(require(id), id, Type::Float);
+        return required<std::int64_t>(id, Type::Int);
     }
 
-    bool boolean(std::string_view id) const
+    ReadResult<double> real(std::string_view id) const
     {
-        return cast<bool>(require(id), id, Type::Bool);
+        return required<double>(id, Type::Float);
     }
 
-    std::string text(std::string_view id) const
+    ReadResult<bool> boolean(std::string_view id) const
     {
-        return cast<std::string>(require(id), id, Type::String);
+        return required<bool>(id, Type::Bool);
     }
 
-    DataRef<Image> image(std::string_view id) const
+    ReadResult<std::string> text(std::string_view id) const
     {
-        return cast<DataRef<Image>>(require(id), id, Type::Image);
+        return required<std::string>(id, Type::String);
     }
 
-    DataRef<ROI> roi(std::string_view id) const
+    ReadResult<DataRef<Image>> image(std::string_view id) const
     {
-        return cast<DataRef<ROI>>(require(id), id, Type::ROI);
+        return required<DataRef<Image>>(id, Type::Image);
     }
 
-    std::optional<std::int64_t> optionalInteger(std::string_view id) const
+    ReadResult<DataRef<ROI>> roi(std::string_view id) const
+    {
+        return required<DataRef<ROI>>(id, Type::ROI);
+    }
+
+    ReadResult<std::optional<std::int64_t>> optionalInteger(std::string_view id) const
     {
         return optional<std::int64_t>(id, Type::Int);
     }
 
-    std::optional<double> optionalReal(std::string_view id) const
+    ReadResult<std::optional<double>> optionalReal(std::string_view id) const
     {
         return optional<double>(id, Type::Float);
     }
 
-    std::optional<bool> optionalBoolean(std::string_view id) const
+    ReadResult<std::optional<bool>> optionalBoolean(std::string_view id) const
     {
         return optional<bool>(id, Type::Bool);
     }
 
-    std::optional<std::string> optionalText(std::string_view id) const
+    ReadResult<std::optional<std::string>> optionalText(std::string_view id) const
     {
         return optional<std::string>(id, Type::String);
     }
 
-    std::optional<DataRef<Image>> nullableImage(std::string_view id) const
+    ReadResult<std::optional<DataRef<Image>>> nullableImage(std::string_view id) const
     {
         return optional<DataRef<Image>>(id, Type::Image);
     }
 
-    std::optional<DataRef<ROI>> nullableRoi(std::string_view id) const
+    ReadResult<std::optional<DataRef<ROI>>> nullableRoi(std::string_view id) const
     {
         return optional<DataRef<ROI>>(id, Type::ROI);
     }
 
     // Array handles keep the caller's DataRef storage; nothing is copied or cloned.
     template<class T>
-    DataRef<T> array(std::string_view id) const
+    ReadResult<DataRef<T>> array(std::string_view id) const
     {
         auto value = nullableArray<T>(id);
         if (!value)
-            throw ContractError("输入数组为空：" + std::string(id));
-        return *value;
+            return value.issue();
+        if (!value.value())
+            return PortIssue{PortIssueKind::Missing, std::string(id), "输入数组为空"};
+        return *value.value();
     }
 
     template<class T>
-    std::optional<DataRef<T>> nullableArray(std::string_view id) const
+    ReadResult<std::optional<DataRef<T>>> nullableArray(std::string_view id) const
     {
         const auto *value = find(id);
         if (!value)
-            return std::nullopt;
+            return std::optional<DataRef<T>>{};
         const auto *container = std::get_if<Array>(value);
         if (!container)
-            throw ContractError("输入端口类型不匹配：" + std::string(id) + "（期望 " + typeName(Type::Array)
-                                + "）");
+            return PortIssue{PortIssueKind::TypeMismatch, std::string(id),
+                             "期望 " + std::string(typeName(Type::Array))};
         std::optional<DataRef<T>> result;
         container->visit(
             [&](const auto &payload)
@@ -174,45 +187,37 @@ public:
                     result = payload;
             });
         if (!result)
-            throw ContractError("输入数组形状不匹配：" + std::string(id) + "（期望 "
-                                + std::string(dtypeName(detail::arrayDType<T>())) + " rank="
-                                + std::to_string(detail::ArrayRank<T>::value) + "）");
+            return PortIssue{PortIssueKind::ShapeMismatch, std::string(id),
+                             "期望 " + std::string(dtypeName(detail::arrayDType<T>())) + " rank="
+                                 + std::to_string(detail::ArrayRank<T>::value)};
         return result;
     }
 
-    // Raw access for ports a tool inspects without committing to one payload kind.
-    const PortValue &require(std::string_view id) const
-    {
-        const auto found = values_.find(id);
-        if (found == values_.end())
-            throw ContractError("输入端口不存在：" + std::string(id));
-        if (isMissing(found->second))
-            throw ContractError("输入端口为空：" + std::string(id));
-        return found->second;
-    }
-
 private:
-    const PortValue *find(std::string_view id) const noexcept
-    {
-        const auto found = values_.find(id);
-        return found == values_.end() || isMissing(found->second) ? nullptr : &found->second;
-    }
-
     template<class T>
-    T cast(const PortValue &value, std::string_view id, Type expected) const
-    {
-        if (const auto *payload = std::get_if<T>(&value))
-            return *payload;
-        throw ContractError("输入端口类型不匹配：" + std::string(id) + "（期望 " + typeName(expected) + "）");
-    }
-
-    template<class T>
-    std::optional<T> optional(std::string_view id, Type expected) const
+    ReadResult<T> required(std::string_view id, Type expected) const
     {
         const auto *value = find(id);
         if (!value)
-            return std::nullopt;
-        return cast<T>(*value, id, expected);
+            return PortIssue{PortIssueKind::Missing, std::string(id), {}};
+        if (const auto *payload = std::get_if<T>(value))
+            return *payload;
+        return PortIssue{PortIssueKind::TypeMismatch, std::string(id),
+                         "期望 " + std::string(typeName(expected))};
+    }
+
+    template<class T>
+    ReadResult<std::optional<T>> optional(std::string_view id, Type expected) const
+    {
+        // An absent or explicitly Missing port is simply "no value"; only a present value of the
+        // wrong type is an author/declaration error.
+        const auto *value = find(id);
+        if (!value)
+            return std::optional<T>{};
+        if (const auto *payload = std::get_if<T>(value))
+            return std::optional<T>{*payload};
+        return PortIssue{PortIssueKind::TypeMismatch, std::string(id),
+                         "期望 " + std::string(typeName(expected))};
     }
 
     const Values &values_;
@@ -221,68 +226,68 @@ private:
 class OutputWriter
 {
 public:
-    void integer(std::string_view id, std::int64_t value)
+    PortWrite integer(std::string_view id, std::int64_t value)
     {
-        write(id, value);
+        return write(id, value);
     }
 
-    void real(std::string_view id, double value)
+    PortWrite real(std::string_view id, double value)
     {
-        write(id, value);
+        return write(id, value);
     }
 
-    void boolean(std::string_view id, bool value)
+    PortWrite boolean(std::string_view id, bool value)
     {
-        write(id, value);
+        return write(id, value);
     }
 
-    void text(std::string_view id, std::string value)
+    PortWrite text(std::string_view id, std::string value)
     {
-        write(id, std::move(value));
+        return write(id, std::move(value));
     }
 
-    void image(std::string_view id, DataRef<Image> value)
+    PortWrite image(std::string_view id, DataRef<Image> value)
     {
-        write(id, std::move(value));
+        return write(id, std::move(value));
     }
 
-    void roi(std::string_view id, DataRef<ROI> value)
+    PortWrite roi(std::string_view id, DataRef<ROI> value)
     {
-        write(id, std::move(value));
-    }
-
-    template<class T>
-    void array(std::string_view id, DataRef<T> value)
-    {
-        write(id, Array(std::move(value)));
-    }
-
-    void optionalImage(std::string_view id, const std::optional<DataRef<Image>> &value)
-    {
-        value ? image(id, *value) : missing(id);
-    }
-
-    void optionalRoi(std::string_view id, const std::optional<DataRef<ROI>> &value)
-    {
-        value ? roi(id, *value) : missing(id);
+        return write(id, std::move(value));
     }
 
     template<class T>
-    void optionalArray(std::string_view id, const std::optional<DataRef<T>> &value)
+    PortWrite array(std::string_view id, DataRef<T> value)
     {
-        value ? array<T>(id, *value) : missing(id);
+        return write(id, Array(std::move(value)));
+    }
+
+    PortWrite optionalImage(std::string_view id, const std::optional<DataRef<Image>> &value)
+    {
+        return value ? image(id, *value) : missing(id);
+    }
+
+    PortWrite optionalRoi(std::string_view id, const std::optional<DataRef<ROI>> &value)
+    {
+        return value ? roi(id, *value) : missing(id);
+    }
+
+    template<class T>
+    PortWrite optionalArray(std::string_view id, const std::optional<DataRef<T>> &value)
+    {
+        return value ? array<T>(id, *value) : missing(id);
     }
 
     // A declared port with no value is written explicitly, never left for the host to invent.
-    void missing(std::string_view id)
+    PortWrite missing(std::string_view id)
     {
-        write(id, Missing{});
+        return write(id, Missing{});
     }
 
     // Raw access for values produced by shared kernels.
-    void value(std::string_view id, PortValue value)
+    PortWrite value(std::string_view id, PortValue value)
     {
-        write(id, std::move(value));
+        return write(id, std::move(value));
     }
 
     Values take() noexcept
@@ -290,24 +295,39 @@ public:
         return std::move(values_);
     }
 
-private:
-    void write(std::string_view id, PortValue value)
+    // The first rejected write, kept so a packer can report it even when it ignores return values.
+    const std::optional<PortIssue> &firstIssue() const noexcept
     {
-        // The two status ports belong to the base class only: one spelling of each key.
-        if (id == kStatusCodePort || id == kStatusMessagePort)
-            throw ContractError("状态端口由参数基类写入：" + std::string(id));
-        auto key = std::string(id);
-        if (!values_.emplace(key, std::move(value)).second)
-            throw ContractError("输出端口重复写入：" + key);
+        return issue_;
     }
 
-    Values values_;
+private:
+    PortWrite write(std::string_view id, PortValue value)
+    {
+        // The two status ports belong to the host: one spelling of each key.
+        if (isStatusPort(id))
+            return latched(PortIssue{PortIssueKind::ReservedPort, std::string(id), {}});
+        auto key = std::string(id);
+        if (!values_.emplace(key, std::move(value)).second)
+            return latched(PortIssue{PortIssueKind::DuplicateOutput, std::move(key), {}});
+        return std::nullopt;
+    }
+
+    PortWrite latched(PortIssue issue)
+    {
+        if (!issue_)
+            issue_ = issue;
+        return issue;
+    }
+
+    Values                   values_;
+    std::optional<PortIssue> issue_;
 };
 
 struct IInputParameters
 {
     virtual ~IInputParameters() = default;
-    virtual void parse(const Values &values) = 0;
+    virtual ToolStatus parse(const Values &values) = 0;
 };
 
 struct IOutputParameters
@@ -323,15 +343,18 @@ public:
 
     // The upstream status is read, never acted on: each tool decides whether a non-zero status
     // stops its own algorithm, and fields stay available either way.
-    void parse(const Values &values) final
+    ToolStatus parse(const Values &values) final
     {
         InputReader reader(values);
-        upstreamStatus = reader.optionalInteger(kUpstreamStatusPort).value_or(0);
-        readFields(reader);
+        const auto  upstream = reader.optionalInteger(kUpstreamStatusPort);
+        if (!upstream)
+            return {kContractViolationStatus, "上游状态端口不合法", upstream.issue().describe()};
+        upstreamStatus = upstream.value().value_or(0);
+        return readFields(reader);
     }
 
 protected:
-    virtual void readFields(InputReader &reader) = 0;
+    virtual ToolStatus readFields(InputReader &reader) = 0;
 };
 
 class OutputParametersBase : public IOutputParameters
@@ -339,12 +362,13 @@ class OutputParametersBase : public IOutputParameters
 public:
     ToolStatus status{};
 
-    // One construction point for the declared business outputs plus the two status keys the tool
-    // itself decided.
+    // One construction point for the declared business outputs plus the status the tool decided.
     ToolResult pack() final
     {
         OutputWriter writer;
         writeFields(writer);
+        if (const auto &issue = writer.firstIssue(); issue && status)
+            status = {kContractViolationStatus, "工具输出端口契约不通过", issue->describe()};
         return toolResult(writer.take(), status);
     }
 

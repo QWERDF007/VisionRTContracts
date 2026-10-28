@@ -10,7 +10,7 @@ if(NOT TARGET opencv_core)
     find_package(OpenCV REQUIRED COMPONENTS core)
 endif()
 
-add_library(VisionRTContracts STATIC src/Tool.cpp src/TypeSpec.cpp src/ROI.cpp src/Value.cpp)
+add_library(VisionRTContracts STATIC src/Tool.cpp src/Issue.cpp src/TypeSpec.cpp src/ROI.cpp src/Value.cpp)
 add_library(VisionRT::Contracts ALIAS VisionRTContracts)
 set_target_properties(VisionRTContracts PROPERTIES
     EXPORT_NAME Contracts
