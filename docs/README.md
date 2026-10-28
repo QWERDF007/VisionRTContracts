@@ -4,6 +4,7 @@
 - [值与结构校验](../include/visionrt/contracts/Value.h)、[实现](../src/Value.cpp)
 - [端口类型](../include/visionrt/contracts/TypeSpec.h)、[嵌套数组与运行时能力](../include/visionrt/contracts/Array.h)、[ROI 几何](../include/visionrt/contracts/ROI.h)
 - [共享可写数据与依赖保活](../include/visionrt/contracts/DataRef.h)、[生命周期契约](../tests/test_data_ref_contract.cpp)
-- [工具实例与状态](../include/visionrt/contracts/Tool.h)、[工厂注册接口](../include/visionrt/contracts/Registry.h)、[模块 ABI](../include/visionrt/contracts/Module.h)
+- [工具实例、状态与路径解析](../include/visionrt/contracts/Tool.h)、[工厂注册接口](../include/visionrt/contracts/Registry.h)、[模块 ABI](../include/visionrt/contracts/Module.h)
+- [端口读取问题与返回式读取](../include/visionrt/contracts/Issue.h)、[参数读取与写入](../include/visionrt/contracts/Parameters.h)、[参数契约测试](../tests/test_sdk_parameters.cpp)
 - [值契约测试](../tests/test_sdk_value_contract.cpp)
 - [隔离安装驱动](../tests/test_isolated_installation.py)、[独立消费工程](../tests/installed_consumer/CMakeLists.txt)、[消费契约](../tests/installed_consumer/main.cpp)

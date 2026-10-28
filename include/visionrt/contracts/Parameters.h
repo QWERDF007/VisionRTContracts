@@ -177,7 +177,7 @@ public:
         const auto *container = std::get_if<Array>(value);
         if (!container)
             return PortIssue{PortIssueKind::TypeMismatch, std::string(id),
-                             "期望 " + std::string(typeName(Type::Array))};
+                             "期望数组"};
         std::optional<DataRef<T>> result;
         container->visit(
             [&](const auto &payload)
@@ -203,7 +203,7 @@ private:
         if (const auto *payload = std::get_if<T>(value))
             return *payload;
         return PortIssue{PortIssueKind::TypeMismatch, std::string(id),
-                         "期望 " + std::string(typeName(expected))};
+                         std::string("期望") + typeLabel(expected)};
     }
 
     template<class T>
@@ -217,7 +217,7 @@ private:
         if (const auto *payload = std::get_if<T>(value))
             return std::optional<T>{*payload};
         return PortIssue{PortIssueKind::TypeMismatch, std::string(id),
-                         "期望 " + std::string(typeName(expected))};
+                         std::string("期望") + typeLabel(expected)};
     }
 
     const Values &values_;

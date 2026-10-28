@@ -12,6 +12,12 @@ const char *typeName(Type type)
     return names.at(static_cast<std::size_t>(type));
 }
 
+const char *typeLabel(Type type)
+{
+    static constexpr std::array names{"整数", "浮点数", "布尔值", "字符串", "图像", "数组", "ROI"};
+    return names.at(static_cast<std::size_t>(type));
+}
+
 const char *dtypeName(DType dtype)
 {
     static constexpr std::array names{"uint8", "int32", "int64", "float32", "float64", "bool", "string"};
