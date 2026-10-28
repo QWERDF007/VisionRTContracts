@@ -84,17 +84,6 @@ std::array<cv::Point2d, 4> rectangleCorners(std::span<const double> encoded)
     return corners;
 }
 
-namespace {
-
-// Only a matrix with a zero projective row keeps circles as ellipses; anything else maps the
-// outline onto a general conic, where the ellipse formula no longer applies.
-bool isAffine(std::span<const double> matrix)
-{
-    return matrix[6] == 0.0 && matrix[7] == 0.0;
-}
-
-} // namespace
-
 std::array<cv::Point2d, 2> transformedRoiBounds(std::span<const double> encoded, std::span<const double> matrix)
 {
     if (matrix.size() != 9)
@@ -105,16 +94,23 @@ std::array<cv::Point2d, 2> transformedRoiBounds(std::span<const double> encoded,
         if (!std::isfinite(value))
             throw ContractError("ROI transform matrix must be finite");
 
+    // Supported range: a finite invertible affine map - the same range the tools' alignment
+    // declares. A projective map sends part of a region to infinity, so a per-corner box reports a
+    // finite rectangle that does not contain the image. That capability needs its own
+    // specification (sign and zero-crossing analysis of the denominator), and approximating it here
+    // would be a guarantee the function cannot keep.
+    if (matrix[6] != 0.0 || matrix[7] != 0.0)
+        throw ContractError("ROI transform must be affine: projective maps are not supported");
+    // det([[a, b], [d, e]]) == 0 collapses the plane; a zero homogeneous scale has no finite image
+    // of any point. Both are refused before any geometry runs.
+    if (matrix[0] * matrix[4] - matrix[1] * matrix[3] == 0.0 || matrix[8] == 0.0)
+        throw ContractError("ROI transform is singular: the ROI has no image");
+
     const auto map = [&](cv::Point2d point)
     {
-        const double w = matrix[6] * point.x + matrix[7] * point.y + matrix[8];
-        // A zero denominator means the point has no image in the target frame. The previous
-        // fallback to 1 invented a coordinate that looked valid and then dragged the whole box onto
-        // it; a singular alignment has to be reported instead of approximated.
-        if (!std::isfinite(w) || w == 0.0)
-            throw ContractError("ROI transform is singular: the ROI maps to infinity");
-        const cv::Point2d target{(matrix[0] * point.x + matrix[1] * point.y + matrix[2]) / w,
-                                 (matrix[3] * point.x + matrix[4] * point.y + matrix[5]) / w};
+        const double      scale = matrix[8];
+        const cv::Point2d target{(matrix[0] * point.x + matrix[1] * point.y + matrix[2]) / scale,
+                                 (matrix[3] * point.x + matrix[4] * point.y + matrix[5]) / scale};
         if (!std::isfinite(target.x) || !std::isfinite(target.y))
             throw ContractError("ROI transform produced non-finite coordinates");
         return target;
@@ -124,32 +120,16 @@ std::array<cv::Point2d, 2> transformedRoiBounds(std::span<const double> encoded,
     {
     case RoiKind::Circle:
     {
-        const double      radius = encoded[3];
-        const cv::Point2d center = map({encoded[1], encoded[2]});
-        if (isAffine(matrix))
-        {
-            // The image of a circle is an ellipse. Its half-extent along x is the radius times the
-            // norm of the first row of the linear part (the support function of the unit disc), and
-            // along y the second row. Scaling a single radius by the x axis instead - the old
-            // behaviour - over-reports the other axis as soon as the scale is not uniform.
-            const double scale      = std::abs(matrix[8]);
-            const double halfWidth  = radius * std::hypot(matrix[0], matrix[1]) / scale;
-            const double halfHeight = radius * std::hypot(matrix[3], matrix[4]) / scale;
-            mapped = {{center.x - halfWidth, center.y - halfHeight},
-                      {center.x + halfWidth, center.y + halfHeight}};
-            break;
-        }
-        // A projective image of a circle is a conic whose bounding box has no closed form worth the
-        // risk here. Sampling the outline keeps the answer honest: 512 points push the
-        // underestimate far below one pixel for any frame the host displays.
-        constexpr int kCircleSamples = 512;
-        mapped.reserve(kCircleSamples);
-        for (int index = 0; index < kCircleSamples; ++index)
-        {
-            const double angle = 2.0 * std::numbers::pi * index / kCircleSamples;
-            mapped.push_back(
-                map({encoded[1] + radius * std::cos(angle), encoded[2] + radius * std::sin(angle)}));
-        }
+        // An affine image of a circle is an ellipse. Its half-extent along x is the radius times
+        // the norm of the first row of the linear part (the support function of the unit disc), and
+        // along y the second row - exact, with no sampling error.
+        const double      radius     = encoded[3];
+        const cv::Point2d center     = map({encoded[1], encoded[2]});
+        const double      scale      = std::abs(matrix[8]);
+        const double      halfWidth  = radius * std::hypot(matrix[0], matrix[1]) / scale;
+        const double      halfHeight = radius * std::hypot(matrix[3], matrix[4]) / scale;
+        mapped = {{center.x - halfWidth, center.y - halfHeight},
+                  {center.x + halfWidth, center.y + halfHeight}};
         break;
     }
     case RoiKind::Rectangle:

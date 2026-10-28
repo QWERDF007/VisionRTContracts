@@ -10,11 +10,15 @@ using namespace visionrt;
 int main()
 try
 {
-    static_assert(MODULE_ABI_MAJOR == 5);
-    const auto result = toolResult({{"value", std::int64_t{21}}}, {7, "", "installed detail"});
+    static_assert(MODULE_ABI_MAJOR == 6);
+    const auto result = toolResult({{"value", std::int64_t{21}}}, {7, "业务失败", "installed detail"});
     assert(std::get<std::int64_t>(result.outputs.at("value")) == 21);
-    assert(std::get<std::int64_t>(result.outputs.at(std::string(kStatusCodePort))) == 7);
-    assert(std::get<std::string>(result.outputs.at(std::string(kStatusMessagePort))) == "installed detail");
+    // The status is one value on the result; the two ports are the host's to materialise, so a tool
+    // never writes them into its own output set.
+    assert(result.status.code == 7 && result.status.message == "业务失败");
+    assert(result.status.detail == "installed detail");
+    assert(result.outputs.find(std::string(kStatusCodePort)) == result.outputs.end());
+    assert(result.outputs.find(std::string(kStatusMessagePort)) == result.outputs.end());
     assert(contractSharedProbe() == MODULE_ABI_MAJOR);
     assert(contractSharedImageReleases() == 0);
     {

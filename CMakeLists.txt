@@ -34,7 +34,10 @@ if(NOT PROJECT_IS_TOP_LEVEL)
     set(VISIONRT_CONTRACTS_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include" PARENT_SCOPE)
 endif()
 
-if(PROJECT_IS_TOP_LEVEL)
+# Install rules are part of the SDK wherever it is built: the host installs one tree and its
+# isolated-consumer contract has to configure against it. A consumer may still switch them off.
+option(VISIONRT_CONTRACTS_INSTALL "Register install rules for the Contracts SDK" ${PROJECT_IS_TOP_LEVEL})
+if(VISIONRT_CONTRACTS_INSTALL)
     include(GNUInstallDirs)
     include(CMakePackageConfigHelpers)
     install(TARGETS VisionRTContracts EXPORT VisionRTContractsTargets
@@ -51,8 +54,16 @@ if(PROJECT_IS_TOP_LEVEL)
     install(FILES "${CMAKE_CURRENT_BINARY_DIR}/VisionRTContractsConfig.cmake"
         "${CMAKE_CURRENT_BINARY_DIR}/VisionRTContractsConfigVersion.cmake"
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/VisionRTContracts)
+endif()
+
+# The contract suite is also registered when Contracts is consumed as a subproject, so the host
+# can build and run it as its own `sdk` group instead of pretending an empty filter passed.
+option(VISIONRT_CONTRACTS_TESTS "Register the Contracts contract tests" OFF)
+if(PROJECT_IS_TOP_LEVEL)
     include(CTest)
     if(BUILD_TESTING)
         add_subdirectory(tests)
     endif()
+elseif(VISIONRT_CONTRACTS_TESTS)
+    add_subdirectory(tests)
 endif()
