@@ -304,7 +304,7 @@ public:
 private:
     PortWrite write(std::string_view id, PortValue value)
     {
-        // The two status ports are packed into outputs by toolResult/finish; direct business mutation is reserved.
+        // The two status ports are packed into outputs by toolResult/finish; direct business mutation is prohibited and rejected as ReservedPort.
         if (isStatusPort(id))
             return latched(PortIssue{PortIssueKind::ReservedPort, std::string(id), {}});
         auto key = std::string(id);
