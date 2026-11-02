@@ -71,15 +71,38 @@ ToolResult run(const TestRegistry &registry, std::string_view id, const Values &
         return nullptr;
     }();
     assert(descriptor);
-    ToolStatus  status;
+    ToolStatus   status;
     ToolServices services;
-    auto       *instance = descriptor->create(&services, &status);
+    auto        *instance = descriptor->create(&services, &status);
     assert(instance && status.code == 0);
+    // The module's destroy entry is the only cleanup that always runs: releasing here as well keeps
+    // the failure case from leaking the instance when an author exception skips the normal path.
+    struct OwnedInstance
+    {
+        const ToolFactoryDescriptor *descriptor;
+        IToolInstance               *instance;
+        bool                         released = false;
+
+        ~OwnedInstance()
+        {
+            if (!released)
+            {
+                try
+                {
+                    instance->release();
+                }
+                catch (...)
+                {
+                }
+            }
+            descriptor->destroy(instance);
+        }
+    } owned{descriptor, instance};
     const auto initialized = instance->initialize({});
     assert(initialized.code == 0);
     auto result = instance->execute(inputs);
     assert(instance->release().code == 0);
-    descriptor->destroy(instance);
+    owned.released = true;
     return result;
 }
 } // namespace
@@ -105,9 +128,30 @@ try
     assert(std::get<std::int64_t>(first.outputs.at(std::string(kStatusCodePort))) == 0);
     assert(std::get<std::string>(first.outputs.at(std::string(kStatusMessagePort))) == "运行成功");
 
-    // A class keeps its instance counter, which is exactly why stateful tools stay classes.
-    const auto counting = run(registry, "test.class.counter", {});
-    assert(std::get<std::int64_t>(counting.outputs.at("count")) == 1);
+    // A class keeps its instance counter, which is exactly why stateful tools stay classes: the
+    // same instance advances twice and a second instance starts over.
+    {
+        const auto *counter = [&]() -> const ToolFactoryDescriptor *
+        {
+            for (const auto &candidate : registry.descriptors)
+                if (std::string_view(candidate.tool_id) == "test.class.counter")
+                    return &candidate;
+            return nullptr;
+        }();
+        assert(counter);
+        ToolStatus   status;
+        ToolServices services;
+        auto        *first = counter->create(&services, &status);
+        assert(first && status.code == 0 && first->initialize({}).code == 0);
+        assert(std::get<std::int64_t>(first->execute({}).outputs.at("count")) == 1);
+        assert(std::get<std::int64_t>(first->execute({}).outputs.at("count")) == 2);
+        auto *second = counter->create(&services, &status);
+        assert(second && status.code == 0 && second->initialize({}).code == 0);
+        assert(std::get<std::int64_t>(second->execute({}).outputs.at("count")) == 1);
+        assert(first->release().code == 0 && second->release().code == 0);
+        counter->destroy(first);
+        counter->destroy(second);
+    }
 
     // Author exceptions reach the host's existing diagnostic path unchanged.
     bool propagated = false;

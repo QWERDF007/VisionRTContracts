@@ -92,77 +92,17 @@ constexpr DType arrayDType()
         static_assert(!sizeof(T), "不支持的数组元素类型");
 }
 
-template<DType>
-struct ArrayScalarType;
-
-template<>
-struct ArrayScalarType<DType::UInt8>
-{
-    using type = std::uint8_t;
-};
-
-template<>
-struct ArrayScalarType<DType::Int32>
-{
-    using type = std::int32_t;
-};
-
-template<>
-struct ArrayScalarType<DType::Int64>
-{
-    using type = std::int64_t;
-};
-
-template<>
-struct ArrayScalarType<DType::Float32>
-{
-    using type = float;
-};
-
-template<>
-struct ArrayScalarType<DType::Float64>
-{
-    using type = double;
-};
-
-template<>
-struct ArrayScalarType<DType::Bool>
-{
-    using type = std::uint8_t;
-};
-
-template<>
-struct ArrayScalarType<DType::String>
-{
-    using type = std::string;
-};
-
-template<DType D>
-using ArrayScalarTypeT = typename ArrayScalarType<D>::type;
+// Elements the buffer stores directly. A nested vector describes structure rather than storage and
+// bool is byte-backed through boolBytes(), so neither is a readable element type.
+template<class T>
+concept ArrayElement = std::same_as<T, std::uint8_t> || std::same_as<T, std::int32_t>
+                       || std::same_as<T, std::int64_t> || std::same_as<T, float> || std::same_as<T, double>
+                       || std::same_as<T, std::string>;
 
 template<class T>
 using ArrayBufferT = std::conditional_t<std::is_same_v<typename ArrayScalar<std::remove_cvref_t<T>>::type, bool>,
                                         std::uint8_t,
                                         typename ArrayScalar<std::remove_cvref_t<T>>::type>;
-
-inline std::size_t arrayElementCount(DType dtype)
-{
-    switch (dtype)
-    {
-    case DType::UInt8:
-    case DType::Bool:
-        return 1;
-    case DType::Int32:
-    case DType::Float32:
-        return 4;
-    case DType::Int64:
-    case DType::Float64:
-        return 8;
-    case DType::String:
-        return sizeof(std::string);
-    }
-    return 0;
-}
 
 } // namespace detail
 
@@ -368,7 +308,7 @@ public:
     // An Array is a handle to shared storage, like DataRef: copies see the same elements and an
     // existing element stays writable through any of them. Structure changes (shape, ragged
     // groupings) go through a builder and a new Array, never through resize/push_back here.
-    template<class T>
+    template<detail::ArrayElement T>
     std::span<T> elements() const
     {
         if (detail::arrayDType<T>() != storage_->dtype)

@@ -3,7 +3,7 @@ find_package(Threads REQUIRED)
 
 set(_contract_tests "")
 foreach(contract_test IN ITEMS test_sdk_value_contract test_data_ref_contract test_array_contract
-        test_sdk_function_tool test_sdk_parameters test_roi_view_contract)
+        tool_registration_test parameter_mapping_test test_roi_view_contract)
     add_executable(${contract_test} ${contract_test}.cpp)
     target_link_libraries(${contract_test} PRIVATE VisionRT::Contracts)
     if(MSVC)
@@ -20,7 +20,7 @@ set(_opencv_bin_dir "")
 if(WIN32 AND OpenCV_SHARED)
     set(_opencv_bin_dir "$<TARGET_FILE_DIR:opencv_core>")
     set_tests_properties(test_sdk_value_contract test_data_ref_contract test_array_contract
-        test_sdk_function_tool test_sdk_parameters test_roi_view_contract PROPERTIES ENVIRONMENT_MODIFICATION
+        tool_registration_test parameter_mapping_test test_roi_view_contract PROPERTIES ENVIRONMENT_MODIFICATION
         "PATH=path_list_prepend:${_opencv_bin_dir}")
 endif()
 

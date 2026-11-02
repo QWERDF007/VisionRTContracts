@@ -84,17 +84,23 @@ struct BadOutputs final : OutputParametersBase
 int main()
 try
 {
-    const auto          image = DataRef<Image>(Image{cv::Mat(2, 3, CV_8UC1, cv::Scalar(9))});
-    std::weak_ptr<void> weak  = image.owner();
-    const auto          mask  = DataRef<ROI>(ROI{{{2, 0, 0, 2, 2, 0}}});
+    // The parsed parameter, not the caller, must keep the image alive: the source leaves scope
+    // before the lifetime is checked, so an expired weak pointer would prove a missing reference.
+    std::weak_ptr<void> weak;
+    const auto          mask = DataRef<ROI>(ROI{{{2, 0, 0, 2, 2, 0}}});
     SampleInputs        inputs;
-    const auto          accepted = inputs.parse({{"upstream_status", std::int64_t{7}},
-                                                 {"images", image},
-                                                 {"gain", 2.5},
-                                                 {"offset", -1.0},
-                                                 {"count", std::int64_t{4}},
-                                                 {"mask", mask},
-                                                 {"flags", Array::fromNested(std::vector<bool>{true, false})}});
+    ToolStatus          accepted;
+    {
+        const auto image = DataRef<Image>(Image{cv::Mat(2, 3, CV_8UC1, cv::Scalar(9))});
+        weak             = image.owner();
+        accepted         = inputs.parse({{"upstream_status", std::int64_t{7}},
+                                 {"images", image},
+                                 {"gain", 2.5},
+                                 {"offset", -1.0},
+                                 {"count", std::int64_t{4}},
+                                 {"mask", mask},
+                                 {"flags", Array::fromNested(std::vector<bool>{true, false})}});
+    }
     // A non-zero upstream status never short-circuits parsing: each tool decides what to do with it.
     assert(accepted.code == 0);
     assert(inputs.upstreamStatus == 7);
@@ -136,7 +142,7 @@ try
 
     // Outputs are written once each; a missing declared port becomes an explicit Missing.
     SampleOutputs outputs;
-    outputs.images = image;
+    outputs.images = DataRef<Image>(Image{cv::Mat(2, 3, CV_8UC1, cv::Scalar(9))});
     outputs.status = {7, "业务失败"};
     const auto packed = outputs.pack();
     assert(std::get<std::int64_t>(packed.outputs.at(std::string(kStatusCodePort))) == 7); assert(std::get<std::string>(packed.outputs.at(std::string(kStatusMessagePort))) == "业务失败");

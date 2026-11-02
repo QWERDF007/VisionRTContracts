@@ -12,6 +12,22 @@
 using namespace visionrt;
 
 namespace {
+// elements<T> reads the flat scalar buffer: a nested vector describes structure and bool is
+// byte-backed through boolBytes(), so both are compile-time errors instead of a reinterpret_cast
+// over a buffer of a different element width.
+template<class T>
+concept ReadsElements = requires(const Array &array) { array.template elements<T>(); };
+
+static_assert(ReadsElements<std::uint8_t>);
+static_assert(ReadsElements<std::int32_t>);
+static_assert(ReadsElements<std::int64_t>);
+static_assert(ReadsElements<float>);
+static_assert(ReadsElements<double>);
+static_assert(ReadsElements<std::string>);
+static_assert(!ReadsElements<bool>);
+static_assert(!ReadsElements<std::vector<double>>);
+static_assert(!ReadsElements<double *>);
+
 template<class T>
 void rectangular(DType dtype)
 {
