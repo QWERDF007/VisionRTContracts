@@ -15,7 +15,7 @@ struct SampleInputs final : InputParametersBase
     double                        offset = -1.0;
     std::int64_t                  count  = 0;
     std::optional<DataRef<ROI>>   mask;
-    std::optional<DataRef<std::vector<bool>>> flags;
+    std::optional<Array>            flags;
 
     ToolStatus readFields(InputReader &reader) override
     {
@@ -34,7 +34,7 @@ struct SampleInputs final : InputParametersBase
         auto mask = reader.nullableRoi("mask");
         if (!mask)
             return {1001, "掩膜不合法", mask.issue().describe()};
-        auto flags = reader.nullableArray<std::vector<bool>>("flags");
+        auto flags = reader.nullableArray("flags");
         if (!flags)
             return {1003, "标志形状不合法", flags.issue().describe()};
 
@@ -94,13 +94,13 @@ try
                                                  {"offset", -1.0},
                                                  {"count", std::int64_t{4}},
                                                  {"mask", mask},
-                                                 {"flags", Array(DataRef<std::vector<bool>>(std::vector<bool>{true, false}))}});
+                                                 {"flags", Array::fromNested(std::vector<bool>{true, false})}});
     // A non-zero upstream status never short-circuits parsing: each tool decides what to do with it.
     assert(accepted.code == 0);
     assert(inputs.upstreamStatus == 7);
     assert(inputs.images && inputs.images->get().size() == 1);
     assert(inputs.gain == 2.5 && inputs.offset == -1.0 && inputs.count == 4);
-    assert(inputs.mask && inputs.flags && inputs.flags->get().size() == 2);
+    assert(inputs.mask && inputs.flags && inputs.flags->elementCount() == 2);
     assert(!weak.expired());
 
     // A missing key and an explicit Missing value both mean "no value"; the fields stay unset.
@@ -120,7 +120,7 @@ try
     assert(absentField.code == 1002 && absentField.detail.find("gain") != std::string::npos);
     const auto rankMismatch = wrong.parse({{"gain", 1.0},
                                            {"offset", 0.0},
-                                           {"flags", Array(NestedVector<bool, 2>{{true}})}});
+                                           {"flags", std::int64_t{1}}});
     assert(rankMismatch.code == 1003 && rankMismatch.detail.find("flags") != std::string::npos);
 
     // The reader never throws: an absent port is an issue the caller decides about.

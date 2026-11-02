@@ -10,7 +10,7 @@ using namespace visionrt;
 int main()
 try
 {
-    static_assert(MODULE_ABI_MAJOR == 7);
+    static_assert(MODULE_ABI_MAJOR == 8);
     const auto result = toolResult({{"value", std::int64_t{21}}}, {7, "业务失败", "installed detail"});
     assert(std::get<std::int64_t>(result.outputs.at("value")) == 21);
     // The status is one value on the result; the two ports are the host's to materialise, so a tool
@@ -35,10 +35,9 @@ try
     assert(contractSharedImageReleases() == 1);
     const auto array = contractSharedArray();
     validateValue({Type::Array, DType::String, 3}, array);
-    const auto arrayAlias                               = array;
-    using Strings                                       = NestedVector<std::string, 3>;
-    std::get<Array>(arrayAlias).get<Strings>()[0][0][0] = "消费者修改";
-    assert(std::get<Array>(array).get<Strings>()[0][0][0] == "消费者修改");
+    const auto arrayAlias = array;
+    std::get<Array>(arrayAlias).elements<std::string>()[0] = "消费者修改";
+    assert(std::get<Array>(array).elements<std::string>()[0] == "消费者修改");
     const auto regions = contractSharedRoi();
     validateValue({Type::ROI}, regions);
     assert(std::get<DataRef<ROI>>(regions).get()[0][0][1] == 16777217.125);

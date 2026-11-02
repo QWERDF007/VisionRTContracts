@@ -109,6 +109,100 @@ std::string formatInt64(std::int64_t value)
     return std::string(text.data(), result.ptr);
 }
 
+namespace {
+constexpr std::string_view kVecPrefix = "vec_";
+
+// Element spellings: the compact token is the only place where a dtype name appears, so a
+// declaration never repeats dtype and rank in two fields.
+struct ElementToken
+{
+    std::string_view token;
+    DType            dtype;
+};
+
+constexpr std::array<ElementToken, 7> kElements{{
+    {   "uint8",  DType::UInt8},
+    {   "int32",  DType::Int32},
+    {     "int",  DType::Int64},
+    { "float32", DType::Float32},
+    {   "float", DType::Float64},
+    {    "bool",   DType::Bool},
+    {  "string", DType::String},
+}};
+
+const ElementToken &elementToken(std::string_view token)
+{
+    for (const auto &element : kElements)
+        if (element.token == token)
+            return element;
+    throw ContractError("未知数组元素类型：" + std::string(token));
+}
+
+std::string_view elementTokenValue(DType dtype)
+{
+    for (const auto &element : kElements)
+        if (element.dtype == dtype)
+            return element.token;
+    throw ContractError("未知数组 dtype");
+}
+} // namespace
+
+TypeSpec parseTypeToken(std::string_view token)
+{
+    int          rank = 0;
+    std::string_view base = token;
+    while (base.starts_with(kVecPrefix))
+    {
+        ++rank;
+        base.remove_prefix(kVecPrefix.size());
+    }
+    if (rank > kMaxArrayRank)
+        throw ContractError("数组 token 最多四层 vec_：" + std::string(token));
+    if (rank == 0)
+    {
+        if (base == "int")
+            return {Type::Int};
+        if (base == "float")
+            return {Type::Float};
+        if (base == "bool")
+            return {Type::Bool};
+        if (base == "string")
+            return {Type::String};
+        if (base == "image")
+            return {Type::Image};
+        if (base == "roi")
+            return {Type::ROI};
+        throw ContractError("未知端口类型 token：" + std::string(token));
+    }
+    return {Type::Array, elementToken(base).dtype, rank};
+}
+
+std::string typeToken(const TypeSpec &type)
+{
+    validateTypeSpec(type);
+    switch (type.type)
+    {
+    case Type::Int:
+        return "int";
+    case Type::Float:
+        return "float";
+    case Type::Bool:
+        return "bool";
+    case Type::String:
+        return "string";
+    case Type::Image:
+        return "image";
+    case Type::ROI:
+        return "roi";
+    case Type::Array:
+        break;
+    }
+    std::string token;
+    for (int level = 0; level < type.rank; ++level) token.append(kVecPrefix);
+    token.append(elementTokenValue(*type.dtype));
+    return token;
+}
+
 void validateUtf8(std::string_view value)
 {
     for (std::size_t index = 0; index < value.size();)

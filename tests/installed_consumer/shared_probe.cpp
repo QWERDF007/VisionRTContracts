@@ -39,7 +39,7 @@ int contractSharedImageReleases()
 
 visionrt::PortValue contractSharedArray()
 {
-    return visionrt::Array(visionrt::NestedVector<std::string, 3>{
+    return visionrt::Array::fromNested(visionrt::NestedVector<std::string, 3>{
         {{"共享数据"}, {}},
         {}
     });

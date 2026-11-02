@@ -6,8 +6,9 @@
 
 namespace visionrt {
 
-// 7: ToolResult carries outputs (including __status_code and __status_message) and detail.
-constexpr std::uint32_t MODULE_ABI_MAJOR = 7;
+// 8: Array owns one flat dtype buffer with a Dense shape or Ragged offsets, and exposes spans
+//    instead of a nested-vector variant. ToolResult keeps carrying outputs and detail.
+constexpr std::uint32_t MODULE_ABI_MAJOR = 8;
 
 struct ModuleApi {
     std::uint32_t abi_major;

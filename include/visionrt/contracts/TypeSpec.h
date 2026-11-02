@@ -52,6 +52,14 @@ public:
 // The wire token ("Int", "Array", …) used by declarations and JSON.
 VT_EXPORT const char *typeName(Type type);
 
+// The single declaration spelling of a port type. One token carries type, dtype and rank:
+//   int | float | bool | string | image | roi
+//   vec_[vec_…]element, where element is uint8, int32, int, float32, float, bool or string and every
+//   vec_ prefix adds one dimension (1..4). "int" and "float" are the scalar ports as well as the
+//   Int64 and Float64 element names, so a declaration never repeats dtype and rank separately.
+VT_EXPORT TypeSpec    parseTypeToken(std::string_view token);
+VT_EXPORT std::string typeToken(const TypeSpec &type);
+
 // The same type as a reader of a message expects to see it ("整数", "浮点数", …).
 VT_EXPORT const char *typeLabel(Type type);
 VT_EXPORT const char *dtypeName(DType dtype);

@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cassert>
+#include <utility>
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -13,18 +14,21 @@ using namespace visionrt;
 
 namespace {
 template<class Operation>
-void rejects(Operation &&operation)
+void rejectsAt(Operation &&operation, int line)
 {
     bool rejected = false;
     try { operation(); } catch (const std::exception&) { rejected = true; }
+    if (!rejected)
+        std::cerr << "expected rejection at line " << line << '\n';
     assert(rejected);
 }
 }
+#define rejects(operation) rejectsAt((operation), __LINE__)
 
 int main()
 try
 {
-    static_assert(MODULE_ABI_MAJOR == 7);
+    static_assert(MODULE_ABI_MAJOR == 8);
     static_assert(std::is_same_v<std::variant_alternative_t<4, PortValue>, std::string>);
     assert(std::string_view(typeName(Type::Image)) == "Image");
     assert(std::string_view(typeName(Type::Array)) == "Array");
@@ -160,22 +164,24 @@ try
     const std::array<int, 3> dimensions{2, 3, 4};
     rejects([&] { validateValue({Type::Image}, DataRef<Image>(Image{cv::Mat(3, dimensions.data(), CV_8UC1)})); });
 
-    const Array names(NestedVector<std::string, 2>{
-        {},
-        {"中文", "two"}
-    });
+    NestedVector<std::string, 2> nameRows{
+        {"中文"},
+        {"two"}
+    };
+    Array names = Array::fromNested(std::move(nameRows));
     validateValue({Type::Array, DType::String, 2}, names);
-    assert(equalValues(names, Array(NestedVector<std::string, 2>{
-                                  {},
-                                  {"中文", "two"}
-    })));
-    names.get<NestedVector<std::string, 2>>()[1][1] = std::string("\xc0\x80", 2);
+    NestedVector<std::string, 2> expectedNames{
+        {"中文"},
+        {"two"}
+    };
+    assert(equalValues(names, Array::fromNested(std::move(expectedNames))));
+    names.elements<std::string>()[1] = std::string("\xc0\x80", 2);
     rejects([&] { validateValue({Type::Array, DType::String, 2}, names); });
-    const Array flags(std::vector<bool>{true, false, true});
+    Array flags = Array::fromNested(std::vector<bool>{true, false, true});
     validateValue({Type::Array, DType::Bool, 1}, flags);
-    flags.get<std::vector<bool>>()[1] = true;
-    assert(equalValues(flags, Array(std::vector<bool>{true, true, true})));
-    assert(!equalValues(flags, Array(std::vector<std::int32_t>{1, 1, 1})));
+    flags.boolBytes()[1] = 1;
+    assert(equalValues(flags, Array::fromNested(std::vector<bool>{true, true, true})));
+    assert(!equalValues(flags, Array::fromNested(std::vector<std::int32_t>{1, 1, 1})));
 
     for (const PortValue &source : {PortValue(DataRef<Image>(Image{})), PortValue(DataRef<ROI>(ROI{{}}))})
     {

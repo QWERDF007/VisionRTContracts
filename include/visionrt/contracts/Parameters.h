@@ -19,53 +19,6 @@
 #include <vector>
 
 namespace visionrt {
-namespace detail {
-
-template<class T>
-struct ArrayRank : std::integral_constant<int, 0>
-{
-};
-
-template<class T>
-struct ArrayRank<std::vector<T>> : std::integral_constant<int, ArrayRank<T>::value + 1>
-{
-};
-
-template<class T>
-struct ArrayScalar
-{
-    using type = T;
-};
-
-template<class T>
-struct ArrayScalar<std::vector<T>>
-{
-    using type = typename ArrayScalar<T>::type;
-};
-
-template<class T>
-constexpr DType arrayDType()
-{
-    using Scalar = typename ArrayScalar<T>::type;
-    if constexpr (std::is_same_v<Scalar, std::uint8_t>)
-        return DType::UInt8;
-    else if constexpr (std::is_same_v<Scalar, std::int32_t>)
-        return DType::Int32;
-    else if constexpr (std::is_same_v<Scalar, std::int64_t>)
-        return DType::Int64;
-    else if constexpr (std::is_same_v<Scalar, float>)
-        return DType::Float32;
-    else if constexpr (std::is_same_v<Scalar, double>)
-        return DType::Float64;
-    else if constexpr (std::is_same_v<Scalar, bool>)
-        return DType::Bool;
-    else if constexpr (std::is_same_v<Scalar, std::string>)
-        return DType::String;
-    else
-        static_assert(!sizeof(T), "不支持的数组元素类型");
-}
-
-} // namespace detail
 
 // Central typed access. A missing key and an explicit Missing value both mean "no value"; a value
 // of the wrong type is an author/declaration error and never silently becomes a default.
@@ -156,11 +109,10 @@ public:
         return optional<DataRef<ROI>>(id, Type::ROI);
     }
 
-    // Array handles keep the caller's DataRef storage; nothing is copied or cloned.
-    template<class T>
-    ReadResult<DataRef<T>> array(std::string_view id) const
+    // Array handles keep the caller's shared buffer; nothing is copied or cloned.
+    ReadResult<Array> array(std::string_view id) const
     {
-        auto value = nullableArray<T>(id);
+        auto value = nullableArray(id);
         if (!value)
             return value.issue();
         if (!value.value())
@@ -168,29 +120,15 @@ public:
         return *value.value();
     }
 
-    template<class T>
-    ReadResult<std::optional<DataRef<T>>> nullableArray(std::string_view id) const
+    ReadResult<std::optional<Array>> nullableArray(std::string_view id) const
     {
         const auto *value = find(id);
         if (!value)
-            return std::optional<DataRef<T>>{};
+            return std::optional<Array>{};
         const auto *container = std::get_if<Array>(value);
         if (!container)
-            return PortIssue{PortIssueKind::TypeMismatch, std::string(id),
-                             "期望数组"};
-        std::optional<DataRef<T>> result;
-        container->visit(
-            [&](const auto &payload)
-            {
-                using Stored = std::decay_t<decltype(payload)>;
-                if constexpr (std::is_same_v<Stored, DataRef<T>>)
-                    result = payload;
-            });
-        if (!result)
-            return PortIssue{PortIssueKind::ShapeMismatch, std::string(id),
-                             "期望 " + std::string(dtypeName(detail::arrayDType<T>())) + " rank="
-                                 + std::to_string(detail::ArrayRank<T>::value)};
-        return result;
+            return PortIssue{PortIssueKind::TypeMismatch, std::string(id), "期望数组"};
+        return std::optional<Array>{*container};
     }
 
 private:
@@ -256,10 +194,9 @@ public:
         return write(id, std::move(value));
     }
 
-    template<class T>
-    PortWrite array(std::string_view id, DataRef<T> value)
+    PortWrite array(std::string_view id, Array value)
     {
-        return write(id, Array(std::move(value)));
+        return write(id, std::move(value));
     }
 
     PortWrite optionalImage(std::string_view id, const std::optional<DataRef<Image>> &value)
@@ -272,10 +209,9 @@ public:
         return value ? roi(id, *value) : missing(id);
     }
 
-    template<class T>
-    PortWrite optionalArray(std::string_view id, const std::optional<DataRef<T>> &value)
+    PortWrite optionalArray(std::string_view id, const std::optional<Array> &value)
     {
-        return value ? array<T>(id, *value) : missing(id);
+        return value ? array(id, *value) : missing(id);
     }
 
     // A declared port with no value is written explicitly, never left for the host to invent.

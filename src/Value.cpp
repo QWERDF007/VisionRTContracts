@@ -8,19 +8,6 @@ namespace visionrt {
 
 namespace {
 
-template<class T>
-void validateStrings(const T &value)
-{
-    if constexpr (std::is_same_v<T, std::string>)
-    {
-        validateUtf8(value);
-    }
-    else
-    {
-        for (const auto &child : value) validateStrings(child);
-    }
-}
-
 void validateImage(const cv::Mat& image) {
     if (image.dims != 2 || image.empty())
         throw ContractError("Image must be a nonempty two-dimensional OpenCV matrix");
@@ -95,13 +82,8 @@ void validateValue(const TypeSpec &expected, const PortValue &value)
             }
             else if constexpr (std::is_same_v<T, Array>)
             {
-                payload.visit(
-                    [](const auto &data)
-                    {
-                        using Payload = std::remove_reference_t<decltype(data.get())>;
-                        if constexpr (std::is_same_v<typename detail::ArrayTraits<Payload>::scalar_type, std::string>)
-                            validateStrings(data.get());
-                    });
+                if (payload.dtype() == DType::String)
+                    for (const auto &text : payload.elements<std::string>()) validateUtf8(text);
             }
         },
         value);
@@ -116,14 +98,7 @@ bool equalValues(const PortValue& left, const PortValue& right) {
             const auto &other = std::get<T>(right);
             if constexpr (std::is_same_v<T, Array>)
             {
-                if (payload.type() != other.type())
-                    return false;
-                return payload.visit(
-                    [&](const auto &data)
-                    {
-                        using Payload = std::remove_reference_t<decltype(data.get())>;
-                        return data.get() == other.template get<Payload>();
-                    });
+                return payload == other;
             }
             else if constexpr (std::is_same_v<T, DataRef<ROI>>)
             {
@@ -164,5 +139,28 @@ PortValue retainValue(const PortValue &value, Owner dependency)
                 return payload;
         },
         value);
+}
+
+PortValue defaultValue(const TypeSpec &type)
+{
+    validateTypeSpec(type);
+    switch (type.type)
+    {
+    case Type::Int:
+        return std::int64_t{0};
+    case Type::Float:
+        return 0.0;
+    case Type::Bool:
+        return false;
+    case Type::String:
+        return std::string{};
+    case Type::Image:
+        return DataRef<Image>(Image{});
+    case Type::Array:
+        return Array::empty(*type.dtype, type.rank);
+    case Type::ROI:
+        return DataRef<ROI>(ROI{});
+    }
+    throw ContractError("未知端口类型");
 }
 }
