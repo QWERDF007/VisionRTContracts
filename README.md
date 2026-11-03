@@ -4,10 +4,11 @@ C++20 工具接口与共享可写值契约。公共接口见 [include/visionrt/c
 
 ## 状态与端口归属
 
-- 工具返回 `ToolResult{outputs, detail}`：`outputs` 包含业务端口及 `__status_code` / `__status_message` 状态端口（由 `toolResult` 或参数 pack 生成），`detail` 为技术诊断信息。
+- 端口身份是数字 `PortId`（uint32），与工具/节点、方向共同确定一个端口；`Values` 即 `map<PortId, PortValue>`，重排与改名不改编号。
+- 工具返回 `ToolResult{outputs, detail}`：`outputs` 包含业务端口及输出 0/1 的状态码与状态信息（由 `toolResult` 或参数 pack 生成），`detail` 为技术诊断信息；输入 0 是上层工具状态。
 - `InputReader` / `OutputWriter` / `PathResolver` 对可预期的坏输入给 `PortIssue`，不抛异常；业务码由工具自己决定；作者违约（如重复输出、保留端口）抛 `ContractError`。
 
-- 模块 ABI 7 起 `ToolResult` 布局如上，6 不再兼容。
+- 模块 ABI 9 起 `Values` 以数字 `PortId` 为键，8 及更早不再兼容。
 
 ## 构建与安装
 

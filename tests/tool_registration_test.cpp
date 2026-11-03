@@ -26,10 +26,10 @@ struct TestRegistry final : IToolRegistry
 ToolResult addOne(const Values &inputs, const ToolServices &)
 {
     InputReader reader(inputs);
-    const auto  value = reader.integer("value");
+    const auto  value = reader.integer(1);
     if (!value)
-        return toolResult({{"result", Missing{}}}, {1001, "输入缺失", value.issue().describe()});
-    return toolResult({{"result", value.value() + 1}}, executionSuccess());
+        return toolResult({{2, Missing{}}}, {1001, "输入缺失", value.issue().describe()});
+    return toolResult({{2, value.value() + 1}}, executionSuccess());
 }
 
 ToolResult failLoudly(const Values &, const ToolServices &)
@@ -50,7 +50,7 @@ struct Counter final : IToolInstance
 
     ToolResult execute(const Values &) override
     {
-        return toolResult({{"count", ++calls}}, {0, ""});
+        return toolResult({{2, ++calls}}, {0, ""});
     }
 
     ToolStatus release() override
@@ -118,15 +118,15 @@ try
     assert(registry.descriptors.size() == 3);
 
     // A function has no business state: two nodes interleaved see only their own inputs.
-    const auto first  = run(registry, "test.function.add_one", {{"value", std::int64_t{1}}});
-    const auto second = run(registry, "test.function.add_one", {{"value", std::int64_t{41}}});
-    assert(std::get<std::int64_t>(first.outputs.at("result")) == 2);
-    assert(std::get<std::int64_t>(first.outputs.at(std::string(kStatusCodePort))) == 0);
-    assert(std::get<std::string>(first.outputs.at(std::string(kStatusMessagePort))) == "运行成功");
-    assert(std::get<std::int64_t>(second.outputs.at("result")) == 42);
-    assert(std::get<std::int64_t>(first.outputs.at("result")) == 2);
-    assert(std::get<std::int64_t>(first.outputs.at(std::string(kStatusCodePort))) == 0);
-    assert(std::get<std::string>(first.outputs.at(std::string(kStatusMessagePort))) == "运行成功");
+    const auto first  = run(registry, "test.function.add_one", {{1, std::int64_t{1}}});
+    const auto second = run(registry, "test.function.add_one", {{1, std::int64_t{41}}});
+    assert(std::get<std::int64_t>(first.outputs.at(2)) == 2);
+    assert(std::get<std::int64_t>(first.outputs.at(kStatusCodePort)) == 0);
+    assert(std::get<std::string>(first.outputs.at(kStatusMessagePort)) == "运行成功");
+    assert(std::get<std::int64_t>(second.outputs.at(2)) == 42);
+    assert(std::get<std::int64_t>(first.outputs.at(2)) == 2);
+    assert(std::get<std::int64_t>(first.outputs.at(kStatusCodePort)) == 0);
+    assert(std::get<std::string>(first.outputs.at(kStatusMessagePort)) == "运行成功");
 
     // A class keeps its instance counter, which is exactly why stateful tools stay classes: the
     // same instance advances twice and a second instance starts over.
@@ -143,11 +143,11 @@ try
         ToolServices services;
         auto        *first = counter->create(&services, &status);
         assert(first && status.code == 0 && first->initialize({}).code == 0);
-        assert(std::get<std::int64_t>(first->execute({}).outputs.at("count")) == 1);
-        assert(std::get<std::int64_t>(first->execute({}).outputs.at("count")) == 2);
+        assert(std::get<std::int64_t>(first->execute({}).outputs.at(2)) == 1);
+        assert(std::get<std::int64_t>(first->execute({}).outputs.at(2)) == 2);
         auto *second = counter->create(&services, &status);
         assert(second && status.code == 0 && second->initialize({}).code == 0);
-        assert(std::get<std::int64_t>(second->execute({}).outputs.at("count")) == 1);
+        assert(std::get<std::int64_t>(second->execute({}).outputs.at(2)) == 1);
         assert(first->release().code == 0 && second->release().code == 0);
         counter->destroy(first);
         counter->destroy(second);
@@ -171,7 +171,7 @@ try
     ToolServices services;
     auto        *instance = descriptor.create(&services, &status);
     assert(instance);
-    assert(instance->initialize({{"gain", 2.0}}).code != 0);
+    assert(instance->initialize({{1, 2.0}}).code != 0);
     descriptor.destroy(instance);
 
     // A missing service block is reported, never dereferenced.

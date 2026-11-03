@@ -28,7 +28,7 @@ void rejectsAt(Operation &&operation, int line)
 int main()
 try
 {
-    static_assert(MODULE_ABI_MAJOR == 8);
+    static_assert(MODULE_ABI_MAJOR == 9);
     static_assert(std::is_same_v<std::variant_alternative_t<4, PortValue>, std::string>);
     assert(std::string_view(typeName(Type::Image)) == "Image");
     assert(std::string_view(typeName(Type::Array)) == "Array");
@@ -219,21 +219,21 @@ try
 
     // A tool result carries the business ports plus one status; the status is never folded into a
     // message and the two status ports stay host-owned until a node materialises them.
-    const auto complete = toolResult({{"value", std::int64_t{9}}}, {17, "业务失败", "technical"});
+    const auto complete = toolResult({{2, std::int64_t{9}}}, {17, "业务失败", "technical"});
     assert(complete.outputs.size() == 3);
-    assert(std::get<std::int64_t>(complete.outputs.at("value")) == 9);
+    assert(std::get<std::int64_t>(complete.outputs.at(2)) == 9);
     assert(complete.detail == "technical");
 
 
-    assert(std::get<std::int64_t>(complete.outputs.at(std::string(kStatusCodePort))) == 17);
-    assert(std::get<std::string>(complete.outputs.at(std::string(kStatusMessagePort))) == "业务失败");
+    assert(std::get<std::int64_t>(complete.outputs.at(kStatusCodePort)) == 17);
+    assert(std::get<std::string>(complete.outputs.at(kStatusMessagePort)) == "业务失败");
 
     const auto success = toolResult({}, {});
-    assert(std::get<std::int64_t>(success.outputs.at(std::string(kStatusCodePort))) == 0 && std::get<std::string>(success.outputs.at(std::string(kStatusMessagePort))).empty() && success.detail.empty());
+    assert(std::get<std::int64_t>(success.outputs.at(kStatusCodePort)) == 0 && std::get<std::string>(success.outputs.at(kStatusMessagePort)).empty() && success.detail.empty());
     const auto negative = toolResult({}, {-5, "业务负数"});
-    assert(std::get<std::int64_t>(negative.outputs.at(std::string(kStatusCodePort))) == -5 && std::get<std::string>(negative.outputs.at(std::string(kStatusMessagePort))) == "业务负数");
+    assert(std::get<std::int64_t>(negative.outputs.at(kStatusCodePort)) == -5 && std::get<std::string>(negative.outputs.at(kStatusMessagePort)) == "业务负数");
     assert(kCancelledStatus == -5);
-    assert(isStatusPort(kStatusCodePort) && !isStatusPort("value"));
+    assert(isStatusPort(kStatusCodePort) && !isStatusPort(2));
 
     // A path that needs a saved project is a reportable issue, not an exception.
     const PathResolver unsaved;

@@ -5,6 +5,10 @@
 // fields as typed members and keeps the business decisions (upstream status policy, missing input
 // handling, in-place versus new output) in its own code.
 //
+// Ports are addressed by the numeric id its declaration publishes. A tool keeps its own
+// constexpr/enum names for those numbers; the reader never sees a spelling and there is no
+// name-to-number fallback.
+//
 // Nothing here throws for a bad port: every read answers with a value or a PortIssue, and every
 // write answers with an issue only when the write was rejected. The numeric business code a tool
 // reports for that issue is the tool's own decision.
@@ -13,7 +17,6 @@
 
 #include <optional>
 #include <string>
-#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -36,116 +39,116 @@ public:
     }
 
     // True only when a usable (non-Missing) value is present.
-    bool present(std::string_view id) const noexcept
+    bool present(PortId id) const noexcept
     {
         return find(id) != nullptr;
     }
 
     // Raw access for ports a tool inspects without committing to one payload kind. Null means the
     // port is absent or explicitly Missing.
-    const PortValue *find(std::string_view id) const noexcept
+    const PortValue *find(PortId id) const noexcept
     {
         const auto found = values_.find(id);
         return found == values_.end() || isMissing(found->second) ? nullptr : &found->second;
     }
 
-    ReadResult<std::int64_t> integer(std::string_view id) const
+    ReadResult<std::int64_t> integer(PortId id) const
     {
         return required<std::int64_t>(id, Type::Int);
     }
 
-    ReadResult<double> real(std::string_view id) const
+    ReadResult<double> real(PortId id) const
     {
         return required<double>(id, Type::Float);
     }
 
-    ReadResult<bool> boolean(std::string_view id) const
+    ReadResult<bool> boolean(PortId id) const
     {
         return required<bool>(id, Type::Bool);
     }
 
-    ReadResult<std::string> text(std::string_view id) const
+    ReadResult<std::string> text(PortId id) const
     {
         return required<std::string>(id, Type::String);
     }
 
-    ReadResult<DataRef<Image>> image(std::string_view id) const
+    ReadResult<DataRef<Image>> image(PortId id) const
     {
         return required<DataRef<Image>>(id, Type::Image);
     }
 
-    ReadResult<DataRef<ROI>> roi(std::string_view id) const
+    ReadResult<DataRef<ROI>> roi(PortId id) const
     {
         return required<DataRef<ROI>>(id, Type::ROI);
     }
 
-    ReadResult<std::optional<std::int64_t>> optionalInteger(std::string_view id) const
+    ReadResult<std::optional<std::int64_t>> optionalInteger(PortId id) const
     {
         return optional<std::int64_t>(id, Type::Int);
     }
 
-    ReadResult<std::optional<double>> optionalReal(std::string_view id) const
+    ReadResult<std::optional<double>> optionalReal(PortId id) const
     {
         return optional<double>(id, Type::Float);
     }
 
-    ReadResult<std::optional<bool>> optionalBoolean(std::string_view id) const
+    ReadResult<std::optional<bool>> optionalBoolean(PortId id) const
     {
         return optional<bool>(id, Type::Bool);
     }
 
-    ReadResult<std::optional<std::string>> optionalText(std::string_view id) const
+    ReadResult<std::optional<std::string>> optionalText(PortId id) const
     {
         return optional<std::string>(id, Type::String);
     }
 
-    ReadResult<std::optional<DataRef<Image>>> nullableImage(std::string_view id) const
+    ReadResult<std::optional<DataRef<Image>>> nullableImage(PortId id) const
     {
         return optional<DataRef<Image>>(id, Type::Image);
     }
 
-    ReadResult<std::optional<DataRef<ROI>>> nullableRoi(std::string_view id) const
+    ReadResult<std::optional<DataRef<ROI>>> nullableRoi(PortId id) const
     {
         return optional<DataRef<ROI>>(id, Type::ROI);
     }
 
     // Array handles keep the caller's shared buffer; nothing is copied or cloned.
-    ReadResult<Array> array(std::string_view id) const
+    ReadResult<Array> array(PortId id) const
     {
         auto value = nullableArray(id);
         if (!value)
             return value.issue();
         if (!value.value())
-            return PortIssue{PortIssueKind::Missing, std::string(id), "输入数组为空"};
+            return PortIssue{PortIssueKind::Missing, portLabel(id), "输入数组为空"};
         return *value.value();
     }
 
-    ReadResult<std::optional<Array>> nullableArray(std::string_view id) const
+    ReadResult<std::optional<Array>> nullableArray(PortId id) const
     {
         const auto *value = find(id);
         if (!value)
             return std::optional<Array>{};
         const auto *container = std::get_if<Array>(value);
         if (!container)
-            return PortIssue{PortIssueKind::TypeMismatch, std::string(id), "期望数组"};
+            return PortIssue{PortIssueKind::TypeMismatch, portLabel(id), "期望数组"};
         return std::optional<Array>{*container};
     }
 
 private:
     template<class T>
-    ReadResult<T> required(std::string_view id, Type expected) const
+    ReadResult<T> required(PortId id, Type expected) const
     {
         const auto *value = find(id);
         if (!value)
-            return PortIssue{PortIssueKind::Missing, std::string(id), {}};
+            return PortIssue{PortIssueKind::Missing, portLabel(id), {}};
         if (const auto *payload = std::get_if<T>(value))
             return *payload;
-        return PortIssue{PortIssueKind::TypeMismatch, std::string(id),
+        return PortIssue{PortIssueKind::TypeMismatch, portLabel(id),
                          std::string("期望") + typeLabel(expected)};
     }
 
     template<class T>
-    ReadResult<std::optional<T>> optional(std::string_view id, Type expected) const
+    ReadResult<std::optional<T>> optional(PortId id, Type expected) const
     {
         // An absent or explicitly Missing port is simply "no value"; only a present value of the
         // wrong type is an author/declaration error.
@@ -154,7 +157,7 @@ private:
             return std::optional<T>{};
         if (const auto *payload = std::get_if<T>(value))
             return std::optional<T>{*payload};
-        return PortIssue{PortIssueKind::TypeMismatch, std::string(id),
+        return PortIssue{PortIssueKind::TypeMismatch, portLabel(id),
                          std::string("期望") + typeLabel(expected)};
     }
 
@@ -164,64 +167,64 @@ private:
 class OutputWriter
 {
 public:
-    PortWrite integer(std::string_view id, std::int64_t value)
+    PortWrite integer(PortId id, std::int64_t value)
     {
         return write(id, value);
     }
 
-    PortWrite real(std::string_view id, double value)
+    PortWrite real(PortId id, double value)
     {
         return write(id, value);
     }
 
-    PortWrite boolean(std::string_view id, bool value)
+    PortWrite boolean(PortId id, bool value)
     {
         return write(id, value);
     }
 
-    PortWrite text(std::string_view id, std::string value)
+    PortWrite text(PortId id, std::string value)
     {
         return write(id, std::move(value));
     }
 
-    PortWrite image(std::string_view id, DataRef<Image> value)
+    PortWrite image(PortId id, DataRef<Image> value)
     {
         return write(id, std::move(value));
     }
 
-    PortWrite roi(std::string_view id, DataRef<ROI> value)
+    PortWrite roi(PortId id, DataRef<ROI> value)
     {
         return write(id, std::move(value));
     }
 
-    PortWrite array(std::string_view id, Array value)
+    PortWrite array(PortId id, Array value)
     {
         return write(id, std::move(value));
     }
 
-    PortWrite optionalImage(std::string_view id, const std::optional<DataRef<Image>> &value)
+    PortWrite optionalImage(PortId id, const std::optional<DataRef<Image>> &value)
     {
         return value ? image(id, *value) : missing(id);
     }
 
-    PortWrite optionalRoi(std::string_view id, const std::optional<DataRef<ROI>> &value)
+    PortWrite optionalRoi(PortId id, const std::optional<DataRef<ROI>> &value)
     {
         return value ? roi(id, *value) : missing(id);
     }
 
-    PortWrite optionalArray(std::string_view id, const std::optional<Array> &value)
+    PortWrite optionalArray(PortId id, const std::optional<Array> &value)
     {
         return value ? array(id, *value) : missing(id);
     }
 
     // A declared port with no value is written explicitly, never left for the host to invent.
-    PortWrite missing(std::string_view id)
+    PortWrite missing(PortId id)
     {
         return write(id, Missing{});
     }
 
     // Raw access for values produced by shared kernels.
-    PortWrite value(std::string_view id, PortValue value)
+    PortWrite value(PortId id, PortValue value)
     {
         return write(id, std::move(value));
     }
@@ -238,14 +241,13 @@ public:
     }
 
 private:
-    PortWrite write(std::string_view id, PortValue value)
+    PortWrite write(PortId id, PortValue value)
     {
         // The two status ports are packed into outputs by toolResult/finish; direct business mutation is prohibited and rejected as ReservedPort.
         if (isStatusPort(id))
-            return latched(PortIssue{PortIssueKind::ReservedPort, std::string(id), {}});
-        auto key = std::string(id);
-        if (!values_.emplace(key, std::move(value)).second)
-            return latched(PortIssue{PortIssueKind::DuplicateOutput, std::move(key), {}});
+            return latched(PortIssue{PortIssueKind::ReservedPort, portLabel(id), {}});
+        if (!values_.emplace(id, std::move(value)).second)
+            return latched(PortIssue{PortIssueKind::DuplicateOutput, portLabel(id), {}});
         return std::nullopt;
     }
 

@@ -13,7 +13,14 @@
 
 namespace visionrt {
 
-using Values = std::map<std::string, PortValue, std::less<>>;
+// A port is identified by the tool (or node) plus its direction plus this number. Numbers are
+// stable for the life of a published declaration: reordering rows, renaming a port or deleting a
+// neighbour never renumbers an existing port. 2^32 is the exhaustion sentinel of a declaration's
+// high-water counter, never a port number itself.
+using PortId = std::uint32_t;
+inline constexpr std::uint64_t kPortIdExhausted = std::uint64_t{1} << 32;
+
+using Values = std::map<PortId, PortValue>;
 
 // Host-owned cancellation result; tool authors never return it as a business code.
 inline constexpr std::int64_t kCancelledStatus = -5;
@@ -21,16 +28,22 @@ inline constexpr std::int64_t kCancelledStatus = -5;
 // Reserved negative code for a tool that broke the wire contract itself.
 inline constexpr std::int64_t kContractViolationStatus = -1;
 
-// Canonical ports every contract carries. Tool output packs __status_code and __status_message into
-// outputs; they stay ordinary declared ports for wiring, readback and the existing output view.
-inline constexpr std::string_view kUpstreamStatusPort = "upstream_status";
-inline constexpr std::string_view kStatusCodePort     = "__status_code";
-inline constexpr std::string_view kStatusMessagePort  = "__status_message";
+// Canonical ports every contract carries. Input 0 is the upstream status injected for Fixed tools;
+// outputs 0 and 1 are the status code and message the tool packs through toolResult. Business
+// numbers start above them, so the same number may appear once per direction.
+inline constexpr PortId kUpstreamStatusPort = 0;
+inline constexpr PortId kStatusCodePort     = 0;
+inline constexpr PortId kStatusMessagePort  = 1;
 
-inline bool isStatusPort(std::string_view id) noexcept
+// Outputs 0 and 1 belong to the status envelope; direct business writes there are rejected.
+inline bool isStatusPort(PortId id) noexcept
 {
     return id == kStatusCodePort || id == kStatusMessagePort;
 }
+
+// A port's readable label for messages and issues ("端口 2"). Identity stays the number; this exists
+// only so diagnostics stay legible.
+VT_EXPORT std::string portLabel(PortId id);
 
 struct ToolStatus {
     std::int64_t code = 0;

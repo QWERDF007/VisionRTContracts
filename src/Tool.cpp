@@ -20,9 +20,13 @@ ToolStatus executionSuccess(std::string message) {
 }
 
 ToolResult toolResult(Values outputs, ToolStatus status) {
-    outputs[std::string(kStatusCodePort)] = status.code;
-    outputs[std::string(kStatusMessagePort)] = std::move(status.message);
+    outputs[kStatusCodePort] = status.code;
+    outputs[kStatusMessagePort] = std::move(status.message);
     return ToolResult{std::move(outputs), std::move(status.detail)};
+}
+
+std::string portLabel(PortId id) {
+    return "端口 " + std::to_string(id);
 }
 
 } // namespace visionrt
