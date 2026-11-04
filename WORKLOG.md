@@ -21,6 +21,26 @@
 - ...
 -->
 
+### 2026-11-02 — R43：数组叶类型约束、SDK 测试清理与改名
+
+**目标**
+- 完成 VisionRT `docs/R43` 中属于 Contracts 的 T43-03、T43-14，并按 T43-09 改掉两个含糊的测试名。
+
+**当前状态**
+- `Array::elements<T>` 只接受存储的标量叶类型（bool 走 `boolBytes()`，嵌套 vector/指针/不匹配类型编译期拒绝）；删除无调用的 `ArrayScalarType/ArrayScalarTypeT/arrayElementCount`，无 ABI 变化。
+- `tests/test_sdk_function_tool.cpp`：实例清理改为局部 RAII，作者异常路径仍 release 一次并 destroy；计数用例改为同一实例两次、第二实例从 1 开始。
+- `tests/test_sdk_parameters.cpp`：延寿断言让源 `DataRef` 真正离开作用域后再检查 owner，避免“源还活着所以通过”。
+- 改名：`test_sdk_function_tool.cpp → tool_registration_test.cpp`、`test_sdk_parameters.cpp → parameter_mapping_test.cpp`；SDK 组由 `tests/CMakeLists.txt` 的列表统一驱动，隔离安装不受影响。
+- 未完成：子模块提交与两仓 gitlink 更新。
+
+**验证证据**
+- `ctest -R "^test_array_contract$"` → 通过（含 9 条编译期叶类型断言）。
+- VisionRT `tests-sdk` 构建 + `ctest -L sdk` → **7/7 通过**（6.69 s，含改名后的两项与 `test_isolated_installation`）。
+- 未验证：GPU/安装态之外的发布候选矩阵。
+
+**下一步**
+- 提交子模块后再更新 VisionRT/VisionTools 的 gitlink；发布候选统一记录三 SHA。
+
 ### 2026-10-23 — 隔离消费校验无宿主依赖
 
 **目标**
