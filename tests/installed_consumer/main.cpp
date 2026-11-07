@@ -10,12 +10,13 @@ using namespace visionrt;
 int main()
 try
 {
-    static_assert(MODULE_ABI_MAJOR == 8);
-    const auto result = toolResult({{"value", std::int64_t{21}}}, {7, "业务失败", "installed detail"});
-    assert(std::get<std::int64_t>(result.outputs.at("value")) == 21);
+    static_assert(MODULE_ABI_MAJOR == 9);
+    const auto result = toolResult({{2, std::int64_t{21}}}, {7, "业务失败", "installed detail"});
+    assert(std::get<std::int64_t>(result.outputs.at(2)) == 21);
     // The status is one value on the result; the two ports are the host's to materialise, so a tool
     // never writes them into its own output set.
-    assert(std::get<std::int64_t>(result.outputs.at(std::string(kStatusCodePort))) == 7 && std::get<std::string>(result.outputs.at(std::string(kStatusMessagePort))) == "业务失败");
+    assert(std::get<std::int64_t>(result.outputs.at(kStatusCodePort)) == 7
+           && std::get<std::string>(result.outputs.at(kStatusMessagePort)) == "业务失败");
     assert(result.detail == "installed detail");
 
 
