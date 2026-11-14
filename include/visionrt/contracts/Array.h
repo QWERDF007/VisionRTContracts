@@ -301,7 +301,6 @@ public:
     }
     std::size_t               elementCount() const noexcept { return storage_->count; }
     void                     *data() const noexcept { return storage_->data; }
-    Owner                     bufferOwner() const { return storage_->owner; }
     const std::vector<std::int64_t>              &shape() const noexcept { return storage_->shape; }
     const std::vector<std::vector<std::int64_t>> &offsets() const noexcept { return storage_->offsets; }
 

@@ -5,9 +5,7 @@
 #include "visionrt/contracts/Value.h"
 
 #include <cstdint>
-#include <filesystem>
 #include <map>
-#include <memory>
 #include <string>
 #include <string_view>
 
@@ -66,33 +64,9 @@ struct ToolResult {
 
 VT_EXPORT ToolResult toolResult(Values outputs, ToolStatus status = {});
 
-// Turns a relative resource path into an absolute one without throwing: a relative path needs a
-// saved project, which is an ordinary, reportable condition rather than an exception.
-class PathResolver {
-public:
-    PathResolver() = default;
-    explicit PathResolver(std::filesystem::path projectDirectory)
-        : directory_(std::move(projectDirectory)) {}
-
-    ReadResult<std::filesystem::path> tryResolve(std::string_view utf8) const {
-        if (utf8.empty()) return std::filesystem::path{};
-        const auto path = std::filesystem::path(std::u8string_view(
-            reinterpret_cast<const char8_t*>(utf8.data()), utf8.size()));
-        if (path.is_absolute()) return path.lexically_normal();
-        if (directory_.empty())
-            return PortIssue{PortIssueKind::PathUnresolved, std::string(utf8), "相对资源路径需要先保存工程"};
-        return (directory_ / path).lexically_normal();
-    }
-    const std::filesystem::path& projectDirectory() const noexcept { return directory_; }
-
-private:
-    std::filesystem::path directory_;
-};
-
-struct ToolServices {
-    PathResolver paths;
-};
-
+// A tool receives only its declared values. A string that names a file is resolved by the tool that
+// reads or writes it, against the directory of the running product executable; the host neither
+// rewrites it nor hands the tool any directory, project, or service object.
 class IToolInstance {
 public:
     virtual ~IToolInstance() = default;

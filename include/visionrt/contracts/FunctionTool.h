@@ -3,7 +3,6 @@
 // Author helper for stateless tools. A function is adapted to the existing IToolInstance
 // interface, so scheduling, cancellation, readback, teardown and ownership keep one code path.
 // The public ABI (ToolFactoryDescriptor, IToolRegistry, ModuleApi) is unchanged.
-
 #include "visionrt/contracts/Registry.h"
 
 #include <exception>
@@ -43,17 +42,12 @@ inline void VT_CALL destroyInstance(IToolInstance *instance) noexcept
 } // namespace detail
 
 // A stateless function keeps no business state between calls: everything it needs arrives as this
-// call's inputs. Services are copied once per instance; nothing is shared between nodes.
+// call's inputs.
 template<auto Function>
-    requires std::is_same_v<decltype(Function), ToolResult (*)(const Values &, const ToolServices &)>
+    requires std::is_same_v<decltype(Function), ToolResult (*)(const Values &)>
 class FunctionToolInstance final : public IToolInstance
 {
 public:
-    explicit FunctionToolInstance(ToolServices services)
-        : services_(std::move(services))
-    {
-    }
-
     ToolStatus initialize(const Values &initParams) override
     {
         // Configuration belongs to the call's inputs. Accepting init parameters here would hide a
@@ -63,42 +57,27 @@ public:
 
     ToolResult execute(const Values &inputs) override
     {
-        return Function(inputs, services_);
+        return Function(inputs);
     }
 
     ToolStatus release() override
     {
         return {};
     }
-
-private:
-    ToolServices services_;
 };
 
 namespace detail {
 
 template<auto Function>
-IToolInstance *VT_CALL createFunction(const ToolServices *services, ToolStatus *status) noexcept
+IToolInstance *VT_CALL createFunction(ToolStatus *status) noexcept
 {
-    if (!services)
-    {
-        if (status)
-            *status = {kContractViolationStatus, "工具服务不能为空"};
-        return nullptr;
-    }
-    return createWith([&] { return new FunctionToolInstance<Function>(*services); }, status);
+    return createWith([] { return new FunctionToolInstance<Function>(); }, status);
 }
 
 template<class Tool>
-IToolInstance *VT_CALL createClass(const ToolServices *services, ToolStatus *status) noexcept
+IToolInstance *VT_CALL createClass(ToolStatus *status) noexcept
 {
-    if (!services)
-    {
-        if (status)
-            *status = {kContractViolationStatus, "工具服务不能为空"};
-        return nullptr;
-    }
-    return createWith([&] { return new Tool(*services); }, status);
+    return createWith([] { return new Tool(); }, status);
 }
 
 } // namespace detail
@@ -106,7 +85,7 @@ IToolInstance *VT_CALL createClass(const ToolServices *services, ToolStatus *sta
 // Only function pointers are accepted: a capturing lambda or std::function would smuggle
 // per-registration state into a stateless contract.
 template<auto Function, std::size_t Size>
-    requires std::is_same_v<decltype(Function), ToolResult (*)(const Values &, const ToolServices &)>
+    requires std::is_same_v<decltype(Function), ToolResult (*)(const Values &)>
 ToolStatus registerFunction(IToolRegistry &registry, const char (&toolId)[Size]) noexcept
 {
     static_assert(Size > 1, "工具 ID 不能为空");
@@ -115,9 +94,9 @@ ToolStatus registerFunction(IToolRegistry &registry, const char (&toolId)[Size])
 }
 
 // Same creation/destruction wrappers for stateful classes: read-image cursors, model resources and
-// counters keep their instance.
+// counters keep their instance. A tool that needs nothing from the host is default-constructed.
 template<class Tool, std::size_t Size>
-    requires std::is_base_of_v<IToolInstance, Tool> && std::is_constructible_v<Tool, ToolServices>
+    requires std::is_base_of_v<IToolInstance, Tool> && std::is_default_constructible_v<Tool>
 ToolStatus registerClass(IToolRegistry &registry, const char (&toolId)[Size]) noexcept
 {
     static_assert(Size > 1, "工具 ID 不能为空");

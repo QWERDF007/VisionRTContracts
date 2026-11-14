@@ -14,12 +14,13 @@ namespace visionrt {
 
 enum class PortIssueKind
 {
-    Missing,
-    TypeMismatch,
-    ShapeMismatch,
-    PathUnresolved,
-    ReservedPort,
-    DuplicateOutput
+    Missing         = 0,
+    TypeMismatch    = 1,
+    ShapeMismatch   = 2,
+    // 3 was PathUnresolved. Numbers are kept explicit so a stored or logged value never changes
+    // meaning when a kind is removed.
+    ReservedPort    = 4,
+    DuplicateOutput = 5
 };
 
 struct PortIssue

@@ -10,7 +10,7 @@ using namespace visionrt;
 int main()
 try
 {
-    static_assert(MODULE_ABI_MAJOR == 9);
+    static_assert(MODULE_ABI_MAJOR == 10);
     const auto result = toolResult({{2, std::int64_t{21}}}, {7, "业务失败", "installed detail"});
     assert(std::get<std::int64_t>(result.outputs.at(2)) == 21);
     // The status is one value on the result; the two ports are the host's to materialise, so a tool

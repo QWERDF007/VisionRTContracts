@@ -23,7 +23,7 @@ struct TestRegistry final : IToolRegistry
     }
 };
 
-ToolResult addOne(const Values &inputs, const ToolServices &)
+ToolResult addOne(const Values &inputs)
 {
     InputReader reader(inputs);
     const auto  value = reader.integer(1);
@@ -32,17 +32,13 @@ ToolResult addOne(const Values &inputs, const ToolServices &)
     return toolResult({{2, value.value() + 1}}, executionSuccess());
 }
 
-ToolResult failLoudly(const Values &, const ToolServices &)
+ToolResult failLoudly(const Values &)
 {
     throw ContractError("函数内业务失败");
 }
 
 struct Counter final : IToolInstance
 {
-    explicit Counter(ToolServices)
-    {
-    }
-
     ToolStatus initialize(const Values &) override
     {
         return {};
@@ -71,9 +67,8 @@ ToolResult run(const TestRegistry &registry, std::string_view id, const Values &
         return nullptr;
     }();
     assert(descriptor);
-    ToolStatus   status;
-    ToolServices services;
-    auto        *instance = descriptor->create(&services, &status);
+    ToolStatus status;
+    auto      *instance = descriptor->create(&status);
     assert(instance && status.code == 0);
     // The module's destroy entry is the only cleanup that always runs: releasing here as well keeps
     // the failure case from leaking the instance when an author exception skips the normal path.
@@ -139,13 +134,12 @@ try
             return nullptr;
         }();
         assert(counter);
-        ToolStatus   status;
-        ToolServices services;
-        auto        *first = counter->create(&services, &status);
+        ToolStatus status;
+        auto      *first = counter->create(&status);
         assert(first && status.code == 0 && first->initialize({}).code == 0);
         assert(std::get<std::int64_t>(first->execute({}).outputs.at(2)) == 1);
         assert(std::get<std::int64_t>(first->execute({}).outputs.at(2)) == 2);
-        auto *second = counter->create(&services, &status);
+        auto *second = counter->create(&status);
         assert(second && status.code == 0 && second->initialize({}).code == 0);
         assert(std::get<std::int64_t>(second->execute({}).outputs.at(2)) == 1);
         assert(first->release().code == 0 && second->release().code == 0);
@@ -167,17 +161,17 @@ try
 
     // A function tool rejects init parameters instead of silently ignoring configuration.
     const auto &descriptor = registry.descriptors.front();
-    ToolStatus  status;
-    ToolServices services;
-    auto        *instance = descriptor.create(&services, &status);
+    ToolStatus status;
+    auto      *instance = descriptor.create(&status);
     assert(instance);
     assert(instance->initialize({{1, 2.0}}).code != 0);
     descriptor.destroy(instance);
 
-    // A missing service block is reported, never dereferenced.
+    // A creation without a status sink still reports through the returned instance.
     status = {};
-    assert(descriptor.create(nullptr, &status) == nullptr && status.code != 0);
-    assert(descriptor.create(nullptr, nullptr) == nullptr);
+    auto *anonymous = descriptor.create(nullptr);
+    assert(anonymous != nullptr);
+    descriptor.destroy(anonymous);
 
     std::cout << "Function and class author entries share the module registration protocol\n";
     return 0;

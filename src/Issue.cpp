@@ -16,9 +16,6 @@ std::string PortIssue::describe() const
     case PortIssueKind::ShapeMismatch:
         result = "输入端口 '" + field + "' 形状不匹配";
         break;
-    case PortIssueKind::PathUnresolved:
-        result = "路径 '" + field + "' 无法解析";
-        break;
     case PortIssueKind::ReservedPort:
         result = "输出端口 '" + field + "' 由宿主写入，工具不得填写";
         break;

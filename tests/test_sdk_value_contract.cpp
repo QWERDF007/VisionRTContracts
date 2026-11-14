@@ -28,7 +28,7 @@ void rejectsAt(Operation &&operation, int line)
 int main()
 try
 {
-    static_assert(MODULE_ABI_MAJOR == 9);
+    static_assert(MODULE_ABI_MAJOR == 10);
     static_assert(std::is_same_v<std::variant_alternative_t<4, PortValue>, std::string>);
     assert(std::string_view(typeName(Type::Image)) == "Image");
     assert(std::string_view(typeName(Type::Array)) == "Array");
@@ -234,17 +234,6 @@ try
     assert(std::get<std::int64_t>(negative.outputs.at(kStatusCodePort)) == -5 && std::get<std::string>(negative.outputs.at(kStatusMessagePort)) == "业务负数");
     assert(kCancelledStatus == -5);
     assert(isStatusPort(kStatusCodePort) && !isStatusPort(2));
-
-    // A path that needs a saved project is a reportable issue, not an exception.
-    const PathResolver unsaved;
-    const auto         unresolved = unsaved.tryResolve("images/a.png");
-    assert(!unresolved && unresolved.issue().kind == PortIssueKind::PathUnresolved);
-    assert(unresolved.issue().describe().find("a.png") != std::string::npos);
-    const PathResolver saved(std::filesystem::path("C:/project"));
-    const auto         relative = saved.tryResolve("images/a.png");
-    assert(relative && relative.value() == std::filesystem::path("C:/project/images/a.png"));
-    const auto absolute = unsaved.tryResolve("C:/images/a.png");
-    assert(absolute && absolute.value() == std::filesystem::path("C:/images/a.png"));
 
     std::cout << "ABI7 writable value, ROI, result and scalar contracts verified\n";
     return 0;

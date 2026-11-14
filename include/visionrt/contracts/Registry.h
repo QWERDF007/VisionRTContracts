@@ -7,7 +7,7 @@ namespace visionrt {
 
 struct ToolFactoryDescriptor {
     const char* tool_id;
-    IToolInstance* (VT_CALL *create)(const ToolServices*, ToolStatus*) noexcept;
+    IToolInstance* (VT_CALL *create)(ToolStatus*) noexcept;
     void (VT_CALL *destroy)(IToolInstance*) noexcept;
 };
 
