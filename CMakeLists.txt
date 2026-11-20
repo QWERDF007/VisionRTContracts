@@ -10,7 +10,16 @@ if(NOT TARGET opencv_core)
     find_package(OpenCV REQUIRED COMPONENTS core)
 endif()
 
-add_library(VisionRTContracts STATIC src/Tool.cpp src/Issue.cpp src/TypeSpec.cpp src/ROI.cpp src/Value.cpp)
+add_library(VisionRTContracts STATIC
+    src/Tool.cpp
+    src/Issue.cpp
+    src/TypeSpec.cpp
+    src/ROI.cpp
+    src/Value.cpp
+    src/Declaration.cpp
+    src/JsonDocument.cpp
+    src/DeclarationValue.cpp
+    src/DeclarationJson.cpp)
 add_library(VisionRT::Contracts ALIAS VisionRTContracts)
 set_target_properties(VisionRTContracts PROPERTIES
     EXPORT_NAME Contracts
@@ -24,6 +33,11 @@ target_include_directories(VisionRTContracts PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
     ${OpenCV_INCLUDE_DIRS})
+# The declaration reader's JSON backend is private: it is compiled into the static library and never
+# reaches an installed header, so a consumer still builds with the SDK headers alone.
+target_include_directories(VisionRTContracts PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/rapidjson/include)
 target_link_libraries(VisionRTContracts PUBLIC opencv_core)
 if(MSVC)
     target_compile_options(VisionRTContracts PUBLIC /utf-8)

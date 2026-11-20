@@ -1,7 +1,8 @@
 #include "shared_probe.h"
 
-#include <visionrt/contracts/Module.h>
+#include <visionrt/contracts/DeclarationJson.h>
 #include <visionrt/contracts/FunctionTool.h>
+#include <visionrt/contracts/Module.h>
 
 #include <cassert>
 #include <iostream>
@@ -112,7 +113,25 @@ try
         validateValue(type, value);
         assert(typeOf(value) == type);
     }
-    std::cout << "Installed value ownership and tool interface verified\n";
+
+    // A tool author's own build reads and rewrites a declaration with no GUI framework linked.
+    const auto declaration = readToolDeclaration(R"({
+        "schema_version": 1,
+        "name_en": "consumer.tool",
+        "name_zh": "消费者工具",
+        "version": "1.0.0",
+        "implementation": { "kind": 0 },
+        "init_params": [ { "id": 0, "name_zh": "模型", "type": { "type": 3 } } ],
+        "inputs": [ { "id": 1, "name_zh": "阈值", "type": { "type": 0 }, "default": 9007199254740993 } ],
+        "outputs": [ { "id": 2, "name_zh": "结果", "type": { "type": 0 } } ]
+    })");
+    assert(declaration.nameEn == "consumer.tool" && declaration.inputs.size() == 1);
+    assert(std::get<std::int64_t>(declaration.inputs[0].defaultValue) == 9007199254740993LL);
+    const auto rewritten = writeToolDeclaration(declaration);
+    const auto reopened  = readToolDeclaration(rewritten);
+    assert(std::get<std::int64_t>(reopened.inputs[0].defaultValue) == 9007199254740993LL);
+    assert(writeToolDeclaration(reopened) == rewritten);
+    std::cout << "Installed value ownership, tool interface and declaration round-trip verified\n";
     return 0;
 }
 catch (const std::exception &error)
