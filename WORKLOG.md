@@ -21,6 +21,24 @@
 - ...
 -->
 
+### 2026-11-20 — 协议枚举单一来源与跨语言导出
+
+**目标**
+- 为 VisionRT、VisionTools 的破坏性协议调整提供同一套 C++ 枚举，并派生 QML 与 Python 导出。
+
+**当前状态**
+- 已完成：新增 ProtocolEnums.h 与 export_enums.py，Qt 无关的公共定义同时供宿主、作者声明、Python SDK 和训练资产使用。
+- 已完成：删除紧凑类型 token 的解析、输出 API 及重复 token 测试；类型仍由 TypeSpec 表达，供人阅读的 typeName/dtypeName 保留。原生模块对象布局未改变。
+- 已完成：两仓 Contracts 源文件与文档相同；共享发布分支为 origin/main，由两个主仓引用同一提交。
+
+**验证证据**
+- VisionRT 构建 Qt 元对象导出成功；SDK7项通过，包含真实隔离安装与独立消费，日志：F:/tmp/visionrt-sdk-verified-results.log。
+- VisionRT backend/bridge/ui 91项全部通过；VisionTools 相关8项通过，25工具包通过真实宿主校验。
+- 比较 ProtocolEnums.h、TypeSpec.h/cpp、export_enums.py、test_array_contract.cpp 与文档，两仓副本一致；日志：F:/tmp/visionrt-doc-verification.log。
+
+**下一步**
+- 共享实现已验证；父仓提交保持同一 Contracts 引用，远程提交状态以 Git 引用为准。
+
 ### 2026-11-02 — R43：数组叶类型约束、SDK 测试清理与改名
 
 **目标**

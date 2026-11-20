@@ -1,8 +1,9 @@
 # 契约文档索引
 
 - [构建与安装消费](../README.md)、[CMake 导出](../CMakeLists.txt)、[安装配置](../cmake/VisionRTContractsConfig.cmake.in)
+- [协议枚举源定义](../include/visionrt/contracts/ProtocolEnums.h)、[QML / Python 枚举导出](../tools/export_enums.py)
 - [值与结构校验](../include/visionrt/contracts/Value.h)、[实现](../src/Value.cpp)
-- [端口类型与紧凑类型 token](../include/visionrt/contracts/TypeSpec.h)、[数组的平坦存储与可读嵌套构造](../include/visionrt/contracts/Array.h)、[ROI 几何](../include/visionrt/contracts/ROI.h)
+- [端口类型与数组类型结构](../include/visionrt/contracts/TypeSpec.h)、[数组的平坦存储与可读嵌套构造](../include/visionrt/contracts/Array.h)、[ROI 几何](../include/visionrt/contracts/ROI.h)
 - [共享可写数据与依赖保活](../include/visionrt/contracts/DataRef.h)、[生命周期契约](../tests/test_data_ref_contract.cpp)
 - [工具实例、状态与路径解析](../include/visionrt/contracts/Tool.h)、[工厂注册接口](../include/visionrt/contracts/Registry.h)、[模块 ABI](../include/visionrt/contracts/Module.h)
 - [端口读取问题与返回式读取](../include/visionrt/contracts/Issue.h)、[参数读取与写入](../include/visionrt/contracts/Parameters.h)、[参数契约测试](../tests/parameter_mapping_test.cpp)

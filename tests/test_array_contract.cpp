@@ -221,44 +221,6 @@ void nestedRoundTrip()
     assert(rejected);
 }
 
-// One token per declaration type; the token is the only spelling an author writes.
-void typeTokens()
-{
-    const std::array<TypeSpec, 11> types{{
-        {Type::Int},
-        {Type::Float},
-        {Type::Bool},
-        {Type::String},
-        {Type::Image},
-        {Type::ROI},
-        {Type::Array, DType::Int64, 1},
-        {Type::Array, DType::Int64, 2},
-        {Type::Array, DType::Float32, 2},
-        {Type::Array, DType::Float64, 3},
-        {Type::Array, DType::String, 4},
-    }};
-    for (const auto &type : types) assert(parseTypeToken(typeToken(type)) == type);
-    assert(typeToken({Type::Array, DType::Int64, 2}) == "vec_vec_int");
-    assert(typeToken({Type::Array, DType::Float32, 2}) == "vec_vec_float32");
-    assert(typeToken({Type::Array, DType::Float64, 3}) == "vec_vec_vec_float");
-    assert(parseTypeToken("vec_int") == (TypeSpec{Type::Array, DType::Int64, 1}));
-
-    bool rejected = false;
-    for (const auto *token : {"int32", "float32", "uint8", "double", "int64", "vec_vec_vec_vec_vec_int"})
-    {
-        try
-        {
-            (void)parseTypeToken(token);
-        }
-        catch (const ContractError &)
-        {
-            rejected = true;
-        }
-        assert(rejected);
-        rejected = false;
-    }
-}
-
 // Every declared port always has a value; the type supplies it when the author writes none.
 void typeDefaults()
 {
@@ -291,7 +253,6 @@ try
     sharingAndReplacement();
     ownership();
     nestedRoundTrip();
-    typeTokens();
     typeDefaults();
 
     std::cout << "Array contract passed: flat dtype buffers, Dense/Ragged structure, shared writable "
