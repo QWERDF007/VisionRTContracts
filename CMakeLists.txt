@@ -16,6 +16,7 @@ add_library(VisionRTContracts STATIC
     src/TypeSpec.cpp
     src/ROI.cpp
     src/Value.cpp
+    src/TrainingSet.cpp
     src/Declaration.cpp
     src/JsonDocument.cpp
     src/DeclarationValue.cpp

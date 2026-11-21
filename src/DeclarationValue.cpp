@@ -433,7 +433,7 @@ void encodeValue(Writer &writer, const PortValue &value, const TypeSpec &type)
                 }
                 writer.EndArray();
             }
-            else
+            else if constexpr (std::is_same_v<Item, DataRef<Image>>)
             {
                 // Pixels are runtime data and never enter a declaration: only the declared empty
                 // batch is a legal literal.
@@ -441,6 +441,11 @@ void encodeValue(Writer &writer, const PortValue &value, const TypeSpec &type)
                     throw ContractError("图像字面量只能是 null 或空数组");
                 writer.StartArray();
                 writer.EndArray();
+            }
+            else
+            {
+                // A training set is a call input; a declaration has no way to spell one.
+                throw ContractError("训练集不能写入工具声明");
             }
         },
         value);

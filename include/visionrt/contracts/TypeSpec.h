@@ -20,7 +20,10 @@ enum class Type
     String,
     Image,
     Array,
-    ROI
+    ROI,
+    // One training call's input table. Never a port of a running pipeline: a trainer declares it,
+    // the workbench passes it once, and nothing serialises it.
+    TrainingSet
 };
 enum class DType
 {

@@ -38,7 +38,7 @@ ToolResult echo(const Values &inputs) { return toolResult({{2, inputs.at(1)}}, {
 int main()
 try
 {
-    static_assert(MODULE_ABI_MAJOR == 10);
+    static_assert(MODULE_ABI_MAJOR == 11);
     ConsumerRegistry registry;
     assert(registerClass<Counter>(registry, "Counter"));
     assert(registerFunction<&echo>(registry, "Echo"));
@@ -131,6 +131,24 @@ try
     const auto reopened  = readToolDeclaration(rewritten);
     assert(std::get<std::int64_t>(reopened.inputs[0].defaultValue) == 9007199254740993LL);
     assert(writeToolDeclaration(reopened) == rewritten);
+    {
+        // The training call value keeps exact keys and owners through an installed SDK.
+        TrainingSet set;
+        const cv::Mat frame(2, 3, CV_8UC1, cv::Scalar(9));
+        set.images.emplace(4, trainingFrame(4, frame, ColorOrder::Gray));
+        TrainingRecord record;
+        record.id      = 3;
+        record.imageId = 4;
+        record.fields.emplace(1, std::int64_t{9007199254740993LL});
+        set.records.emplace(record.id, record);
+        validateTrainingSet(set);
+        const PortValue value = DataRef<TrainingSet>(set);
+        assert(typeOf(value) == TypeSpec{Type::TrainingSet});
+        validateValue({Type::TrainingSet}, value);
+        const auto retained = std::get<DataRef<TrainingSet>>(retainValue(value, std::make_shared<int>(0)));
+        assert(std::get<std::int64_t>(retained.get().records.at(3).fields.at(1)) == 9007199254740993LL);
+        assert(retained.get().images.at(4).pixels.at<unsigned char>(0, 0) == 9);
+    }
     std::cout << "Installed value ownership, tool interface and declaration round-trip verified\n";
     return 0;
 }

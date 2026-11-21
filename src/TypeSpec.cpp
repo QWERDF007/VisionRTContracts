@@ -8,13 +8,13 @@ namespace visionrt {
 
 const char *typeName(Type type)
 {
-    static constexpr std::array names{"Int", "Float", "Bool", "String", "Image", "Array", "ROI"};
+    static constexpr std::array names{"Int", "Float", "Bool", "String", "Image", "Array", "ROI", "TrainingSet"};
     return names.at(static_cast<std::size_t>(type));
 }
 
 const char *typeLabel(Type type)
 {
-    static constexpr std::array names{"整数", "浮点数", "布尔值", "字符串", "图像", "数组", "ROI"};
+    static constexpr std::array names{"整数", "浮点数", "布尔值", "字符串", "图像", "数组", "ROI", "训练集"};
     return names.at(static_cast<std::size_t>(type));
 }
 

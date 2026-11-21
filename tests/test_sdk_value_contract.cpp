@@ -28,7 +28,7 @@ void rejectsAt(Operation &&operation, int line)
 int main()
 try
 {
-    static_assert(MODULE_ABI_MAJOR == 10);
+    static_assert(MODULE_ABI_MAJOR == 11);
     static_assert(std::is_same_v<std::variant_alternative_t<4, PortValue>, std::string>);
     assert(std::string_view(typeName(Type::Image)) == "Image");
     assert(std::string_view(typeName(Type::Array)) == "Array");

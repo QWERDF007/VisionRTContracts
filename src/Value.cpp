@@ -6,9 +6,8 @@
 
 namespace visionrt {
 
-namespace {
-
-void validateImage(const cv::Mat& image) {
+void validateImageFrame(const cv::Mat &image)
+{
     if (image.dims != 2 || image.empty())
         throw ContractError("Image must be a nonempty two-dimensional OpenCV matrix");
     const auto rowBytes = checkedByteCount(std::array<std::int64_t, 1>{image.cols}, image.elemSize());
@@ -21,8 +20,6 @@ void validateImage(const cv::Mat& image) {
     if (!image.dataend || image.dataend < image.data ||
         bytes > static_cast<std::size_t>(image.dataend - image.data))
         throw ContractError("Image strides exceed backing buffer range");
-}
-
 }
 
 bool isMissing(const PortValue &value) noexcept
@@ -50,6 +47,8 @@ std::optional<TypeSpec> typeOf(const PortValue &value)
                 return TypeSpec{Type::Image};
             else if constexpr (std::is_same_v<T, DataRef<ROI>>)
                 return TypeSpec{Type::ROI};
+            else if constexpr (std::is_same_v<T, DataRef<TrainingSet>>)
+                return TypeSpec{Type::TrainingSet};
             else
                 return payload.type();
         },
@@ -73,7 +72,11 @@ void validateValue(const TypeSpec &expected, const PortValue &value)
             }
             else if constexpr (std::is_same_v<T, DataRef<Image>>)
             {
-                for (const auto &image : payload.get()) validateImage(image);
+                for (const auto &image : payload.get()) validateImageFrame(image);
+            }
+            else if constexpr (std::is_same_v<T, DataRef<TrainingSet>>)
+            {
+                validateTrainingSet(payload.get());
             }
             else if constexpr (std::is_same_v<T, DataRef<ROI>>)
             {
@@ -104,6 +107,12 @@ bool equalValues(const PortValue& left, const PortValue& right) {
             {
                 return payload.get() == other.get();
             }
+            else if constexpr (std::is_same_v<T, DataRef<TrainingSet>>)
+            {
+                // A training set is a call input, never a stored value; two sets are equal only
+                // when they are the same set.
+                return &payload.get() == &other.get();
+            }
             else if constexpr (std::is_same_v<T, DataRef<Image>>)
             {
                 const auto &images      = payload.get();
@@ -133,7 +142,7 @@ PortValue retainValue(const PortValue &value, Owner dependency)
         {
             using T = std::decay_t<decltype(payload)>;
             if constexpr (std::is_same_v<T, DataRef<Image>> || std::is_same_v<T, DataRef<ROI>>
-                          || std::is_same_v<T, Array>)
+                          || std::is_same_v<T, DataRef<TrainingSet>> || std::is_same_v<T, Array>)
                 return payload.retainedBy(dependency);
             else
                 return payload;
@@ -160,6 +169,8 @@ PortValue defaultValue(const TypeSpec &type)
         return Array::empty(*type.dtype, type.rank);
     case Type::ROI:
         return DataRef<ROI>(ROI{});
+    case Type::TrainingSet:
+        return DataRef<TrainingSet>(TrainingSet{});
     }
     throw ContractError("未知端口类型");
 }
