@@ -1,7 +1,11 @@
 #pragma once
 
 namespace visionrt {
+// The pre-training asset a tool used to read on its own. Kept only so a project saved before the
+// trainer protocol still opens with a diagnosis instead of a parse error.
 inline constexpr int kTrainingAssetVersion = 2;
+// A published training asset: typed records, parameters, lossless source frames and model files.
+inline constexpr int kTrainingManifestVersion = 3;
 enum class ToolKind { Cpp = 0, PythonFunction = 1, PythonClass = 2, Host = 3 };
 enum class BindingMode { Literal = 0, Upstream = 1 };
 enum class PortStage { Init = 0, Inputs = 1, Outputs = 2 };

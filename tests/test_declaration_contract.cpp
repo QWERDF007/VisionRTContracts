@@ -133,6 +133,123 @@ try
         "implementation":{"kind":0},"node_model":9})"); },
             "枚举编码");
 
+    // The authoring block keeps the workbench facts: a helper port takes either a context role or a
+    // node port, and a click writes exactly the listed targets.
+    {
+        const auto authored = readToolDeclaration(R"({"schema_version":1,"name_en":"probe","name_zh":"探针",
+            "version":"1","implementation":{"kind":0},
+            "inputs":[{"id":21,"name_zh":"图像","type":{"type":4},"display":{"visible":true}},
+                      {"id":34,"name_zh":"区域","type":{"type":6},"default":[]}],
+            "outputs":[{"id":2,"name_zh":"计数","type":{"type":0}}],
+            "authoring":{"version":1,"easy_touch":{
+                "image":{"stage":1,"id":21},
+                "call":{"tool":"ProbePick","inputs":[
+                    {"port":1,"source":{"stage":1,"id":21}},
+                    {"port":2,"context":0},
+                    {"port":3,"context":1},
+                    {"port":6,"context":2},
+                    {"port":4,"source":{"stage":1,"id":34}}]},
+                "preview_output":30,"valid_output":32,"message_output":33,
+                "writes":[{"source_port":31,"target":{"stage":1,"id":34}},
+                          {"source_port":34,"target":{"stage":0,"id":0}}]}}})", "探针.json");
+        require(authored.authoring && authored.authoring->version == 1, "authoring version");
+        const auto &touch = *authored.authoring->easyTouch;
+        require(touch.image == PortRef{PortStage::Inputs, 21}, "easy_touch image");
+        require(touch.call.tool == "ProbePick" && touch.call.inputs.size() == 5, "call identity");
+        require(std::get<ContextRole>(touch.call.inputs[1].source) == ContextRole::Cursor, "cursor role");
+        require(std::get<ContextRole>(touch.call.inputs[3].source) == ContextRole::Append, "append role");
+        require(std::get<PortRef>(touch.call.inputs[4].source) == PortRef{PortStage::Inputs, 34}, "source port");
+        require(touch.previewOutput == 30 && touch.validOutput == 32 && touch.messageOutput == 33, "read outputs");
+        require(touch.writes.size() == 2 && touch.writes[1].target == PortRef{PortStage::Init, 0}, "writes");
+
+        const auto  written  = writeToolDeclaration(authored);
+        const auto  restored = readToolDeclaration(written, "回写.json");
+        require(restored.authoring && restored.authoring->easyTouch, "authoring after rewrite");
+        require(writeToolDeclaration(restored) == written, "authoring rewrite is stable");
+        require(!written.empty() && written.find("\"easy_touch\"") != std::string::npos, "authoring is emitted");
+    }
+
+    // The training block names the frame "加入训练" copies and the typed fields a record carries.
+    // Field ids are the trainer's keys, so a renamed field keeps its number and its value.
+    {
+        const auto trained = readToolDeclaration(R"({"schema_version":1,"name_en":"trainer","name_zh":"训练",
+            "version":"1","implementation":{"kind":0},
+            "init_params":[{"id":0,"name_zh":"训练数据路径","type":{"type":3}}],
+            "inputs":[{"id":1,"name_zh":"图像","type":{"type":4}}],
+            "outputs":[{"id":2,"name_zh":"计数","type":{"type":0}}],
+            "training":{"kind":1,"asset_param":0,"image":{"stage":1,"id":1},
+              "records":{"max":1,"fields":[
+                {"id":1,"name_zh":"参考边","type":{"type":6},"roi":true,"regions":{"min":2,"max":2}},
+                {"id":3,"name_zh":"备注","type":{"type":3}}]}}})", "训练.json");
+        require(trained.training && trained.training->image == PortRef{PortStage::Inputs, 1},
+                "training image");
+        const auto &records = trained.training->records;
+        require(records.maxCount == 1 && records.fields.size() == 2, "training record shape");
+        require(records.roiField() == 1, "training canvas field");
+        require(records.fields[0].minRegions == 2 && records.fields[0].maxRegions == 2,
+                "training region budget");
+
+        const auto written  = writeToolDeclaration(trained);
+        const auto restored = readToolDeclaration(written, "回写.json");
+        require(restored.training && restored.training->records == records, "training survives rewrite");
+        require(writeToolDeclaration(restored) == written, "training rewrite is stable");
+    }
+    rejects([] { readToolDeclaration(R"({"schema_version":1,"name_en":"a","name_zh":"b","version":"1",
+        "implementation":{"kind":0},"init_params":[{"id":0,"name_zh":"路径","type":{"type":3}}],
+        "inputs":[{"id":1,"name_zh":"图像","type":{"type":4}}],
+        "training":{"kind":0,"asset_param":0,"image":{"stage":1,"id":1},
+          "records":{"fields":[{"id":1,"name_zh":"a","type":{"type":3}},
+                               {"id":1,"name_zh":"b","type":{"type":3}}]}}})"); },
+            "重复声明了字段编号");
+    rejects([] { readToolDeclaration(R"({"schema_version":1,"name_en":"a","name_zh":"b","version":"1",
+        "implementation":{"kind":0},"init_params":[{"id":0,"name_zh":"路径","type":{"type":3}}],
+        "inputs":[{"id":1,"name_zh":"图像","type":{"type":4}}],
+        "training":{"kind":0,"asset_param":0,"image":{"stage":1,"id":1},
+          "records":{"fields":[{"id":1,"name_zh":"a","type":{"type":6},"roi":true},
+                               {"id":2,"name_zh":"b","type":{"type":6},"roi":true}]}}})"); },
+            "只能有一个画布 ROI 字段");
+    rejects([] { readToolDeclaration(R"({"schema_version":1,"name_en":"a","name_zh":"b","version":"1",
+        "implementation":{"kind":0},"init_params":[{"id":0,"name_zh":"路径","type":{"type":3}}],
+        "inputs":[{"id":1,"name_zh":"图像","type":{"type":4}}],
+        "training":{"kind":0,"asset_param":0,"image":{"stage":1,"id":9},
+          "records":{"fields":[{"id":1,"name_zh":"a","type":{"type":3}}]}}})"); },
+            "training.image");
+    rejects([] { readToolDeclaration(R"({"schema_version":1,"name_en":"a","name_zh":"b","version":"1",
+        "implementation":{"kind":0},"init_params":[{"id":0,"name_zh":"路径","type":{"type":3}}],
+        "inputs":[{"id":1,"name_zh":"图像","type":{"type":4}}],
+        "training":{"kind":0,"asset_param":0,"image":{"stage":1,"id":1}}})"); },
+            "缺少 records");
+
+
+    rejects([] { readToolDeclaration(R"({"schema_version":1,"name_en":"a","name_zh":"b","version":"1",
+        "implementation":{"kind":0},"authoring":{"version":2,"easy_touch":{"image":{"stage":1,"id":1},
+        "call":{"tool":"h"},"preview_output":2,"valid_output":4,
+        "writes":[{"source_port":3,"target":{"stage":1,"id":2}}]}}})"); },
+            "authoring.version");
+    rejects([] { readToolDeclaration(R"({"schema_version":1,"name_en":"a","name_zh":"b","version":"1",
+        "implementation":{"kind":0},"authoring":{"version":1}})"); },
+            "至少声明一个作用域");
+    rejects([] { readToolDeclaration(R"({"schema_version":1,"name_en":"a","name_zh":"b","version":"1",
+        "implementation":{"kind":0},"authoring":{"version":1,"easy_touch":{"image":{"stage":1,"id":1},
+        "call":{"tool":"h"},"preview_output":2,"valid_output":4,"writes":[]}}})"); },
+            "writes");
+    rejects([] { readToolDeclaration(R"({"schema_version":1,"name_en":"a","name_zh":"b","version":"1",
+        "implementation":{"kind":0},"authoring":{"version":1,"easy_touch":{"image":{"stage":1,"id":1},
+        "call":{"tool":"h","inputs":[{"port":2,"context":0,"source":{"stage":1,"id":1}}]},
+        "preview_output":2,"valid_output":4,"writes":[{"source_port":3,"target":{"stage":1,"id":1}}]}}})"); },
+            "必须且只能声明");
+    rejects([] { readToolDeclaration(R"({"schema_version":1,"name_en":"a","name_zh":"b","version":"1",
+        "implementation":{"kind":0},"authoring":{"version":1,"easy_touch":{"image":{"stage":1,"id":1},
+        "call":{"tool":"h","inputs":[{"port":2,"context":0},{"port":2,"context":1}]},
+        "preview_output":2,"valid_output":4,"writes":[{"source_port":3,"target":{"stage":1,"id":1}}]}}})"); },
+            "重复声明");
+    rejects([] { readToolDeclaration(R"({"schema_version":1,"name_en":"a","name_zh":"b","version":"1",
+        "implementation":{"kind":0},"authoring":{"version":1,"easy_touch":{"image":{"stage":1,"id":1},
+        "call":{"tool":"h"},"preview_output":2,"valid_output":4,
+        "writes":[{"source_port":3,"target":{"stage":1,"id":1}},
+                  {"source_port":5,"target":{"stage":1,"id":1}}]}}})"); },
+            "重复写入");
+
     std::cout << "declaration read/write round-trip keeps exact integers and rejects at the field\n";
     return 0;
 }

@@ -128,6 +128,39 @@ std::optional<PortValue> optionalValue(const Node &owner, std::string_view name,
     }
 }
 
+// Constraints and editor spelling are shared by value ports and training parameters: both name a
+// typed value with the same limits and the same control. Only the port adds tab, group and provider.
+void readConstraints(const Node &item, const TypeSpec &type, std::string_view where,
+                     std::optional<PortValue> &minimum, std::optional<PortValue> &maximum,
+                     std::vector<PortValue> &options)
+{
+    const auto *constraints = item.find("constraints");
+    if (constraints == nullptr)
+        return;
+    const auto &block = object(*constraints, std::string(where) + ".constraints");
+    fields(block, {"min", "max", "options"}, std::string(where) + ".constraints");
+    if (const auto value = optionalValue(block, "min", type, std::string(where) + ".constraints"))
+        minimum = *value;
+    if (const auto value = optionalValue(block, "max", type, std::string(where) + ".constraints"))
+        maximum = *value;
+    if (const auto *list = block.find("options"))
+    {
+        if (list->kind != Kind::Array)
+            throw ContractError(std::string(where) + ".constraints.options 必须是数组");
+        for (const auto &option : list->items)
+        {
+            try
+            {
+                options.push_back(decljson::decodeValue(option, type));
+            }
+            catch (const ContractError &error)
+            {
+                throw ContractError(std::string(where) + ".constraints.options：" + error.what());
+            }
+        }
+    }
+}
+
 std::vector<PortDefinition> ports(const Node &root, PortStage stage)
 {
     // The declaration spells the initialisation list "init_params"; diagnostics keep the shorter
@@ -171,31 +204,7 @@ std::vector<PortDefinition> ports(const Node &root, PortStage stage)
         {
             port.type = decljson::decodeType(member(item, "type", where));
         }
-        if (const auto *constraints = item.find("constraints"))
-        {
-            const auto &block = object(*constraints, where + ".constraints");
-            fields(block, {"min", "max", "options"}, where + ".constraints");
-            if (const auto value = optionalValue(block, "min", port.type, where + ".constraints"))
-                port.minimum = *value;
-            if (const auto value = optionalValue(block, "max", port.type, where + ".constraints"))
-                port.maximum = *value;
-            if (const auto *options = block.find("options"))
-            {
-                if (options->kind != Kind::Array)
-                    throw ContractError(where + ".constraints.options 必须是数组");
-                for (const auto &option : options->items)
-                {
-                    try
-                    {
-                        port.options.push_back(decljson::decodeValue(option, port.type));
-                    }
-                    catch (const ContractError &error)
-                    {
-                        throw ContractError(where + ".constraints.options：" + error.what());
-                    }
-                }
-            }
-        }
+        readConstraints(item, port.type, where, port.minimum, port.maximum, port.options);
         if (const auto *ui = item.find("ui"))
         {
             const auto &block = object(*ui, where + ".ui");
@@ -347,16 +356,306 @@ void readInteraction(const Node &node, ToolDeclaration &declaration)
     declaration.interaction = std::move(mapping);
 }
 
+TrainingFieldSpec readTrainingField(const Node &node, std::string_view where)
+{
+    const auto &item = object(node, where);
+    fields(item, {"id", "name_zh", "type", "roi", "regions"}, where);
+    TrainingFieldSpec field;
+    field.id     = portId(member(item, "id", where), context(where, "id"));
+    field.nameZh = text(item, "name_zh", where, false);
+    field.type   = decljson::decodeType(member(item, "type", where));
+    if (field.type.type == Type::Image || field.type.type == Type::TrainingSet)
+        throw ContractError(std::string(where) + " 只能声明标量、Array 或 ROI 字段");
+    if (const auto *roi = item.find("roi"))
+    {
+        if (roi->kind != Kind::Bool)
+            throw ContractError(context(where, "roi") + " 必须是布尔值");
+        field.roi = roi->boolean;
+    }
+    if (const auto *regions = item.find("regions"))
+    {
+        if (!field.roi)
+            throw ContractError(std::string(where) + ".regions 只属于画布编辑的 ROI 字段");
+        const auto &block = object(*regions, context(where, "regions"));
+        fields(block, {"min", "max"}, context(where, "regions"));
+        if (const auto *minimum = block.find("min"))
+            field.minRegions = static_cast<int>(decljson::integer(*minimum, context(where, "regions.min")));
+        if (const auto *maximum = block.find("max"))
+            field.maxRegions = static_cast<int>(decljson::integer(*maximum, context(where, "regions.max")));
+        if (field.minRegions < 0 || field.maxRegions < 0)
+            throw ContractError(context(where, "regions") + " 的上下限不能为负数");
+        if (field.maxRegions != 0 && field.minRegions > field.maxRegions)
+            throw ContractError(context(where, "regions") + " 的下限大于上限");
+    }
+    if (field.roi && field.type.type != Type::ROI)
+        throw ContractError(std::string(where) + " 的画布字段必须是 ROI");
+    return field;
+}
+
+void readTrainingRecords(const Node &node, TrainingRecordsSpec &records)
+{
+    const auto &block = object(node, "training.records");
+    fields(block, {"max", "fields"}, "training.records");
+    if (const auto *maximum = block.find("max"))
+    {
+        const auto value = decljson::integer(*maximum, "training.records.max");
+        if (value < 0 || value > std::numeric_limits<int>::max())
+            throw ContractError("training.records.max 必须是 32 位非负整数");
+        records.maxCount = static_cast<int>(value);
+    }
+    const auto *list = block.find("fields");
+    if (list == nullptr || list->kind != Kind::Array || list->items.empty())
+        throw ContractError("training.records.fields 必须是非空数组");
+    for (std::size_t index = 0; index < list->items.size(); ++index)
+    {
+        const auto where = std::string("training.records.fields[") + std::to_string(index) + "]";
+        auto       field = readTrainingField(list->items[index], where);
+        if (std::any_of(records.fields.begin(), records.fields.end(),
+                        [&](const TrainingFieldSpec &existing) { return existing.id == field.id; }))
+            throw ContractError(where + " 重复声明了字段编号");
+        records.fields.push_back(std::move(field));
+    }
+    if (std::count_if(records.fields.begin(), records.fields.end(),
+                      [](const TrainingFieldSpec &field) { return field.roi; })
+        > 1)
+        throw ContractError("training.records.fields 只能有一个画布 ROI 字段");
+}
+
+std::vector<AuthoringWrite> readWrites(const Node &item, std::string_view where)
+{
+    std::vector<AuthoringWrite> result;
+    const auto                 *writes = item.find("writes");
+    if (writes == nullptr)
+        return result;
+    if (writes->kind != Kind::Array)
+        throw ContractError(std::string(where) + ".writes 必须是数组");
+    for (std::size_t index = 0; index < writes->items.size(); ++index)
+    {
+        const auto  writeWhere = std::string(where) + ".writes[" + std::to_string(index) + "]";
+        const auto &entry      = object(writes->items[index], writeWhere);
+        fields(entry, {"source_port", "target"}, writeWhere);
+        AuthoringWrite write;
+        write.sourcePort = portId(member(entry, "source_port", writeWhere), writeWhere + ".source_port");
+        if (write.sourcePort == 0)
+            throw ContractError(writeWhere + ".source_port 必须大于 0");
+        write.target = reference(member(entry, "target", writeWhere), writeWhere + ".target");
+        if (std::any_of(result.begin(), result.end(),
+                        [&](const AuthoringWrite &existing) { return existing.target == write.target; }))
+            throw ContractError(writeWhere + ".target 重复写入同一端口：" + formatPortRef(write.target));
+        result.push_back(std::move(write));
+    }
+    return result;
+}
+
+TrainingParameterSpec readTrainingParameter(const Node &node, std::string_view where)
+{
+    const auto &item = object(node, where);
+    fields(item, {"id", "name_zh", "type", "default", "constraints", "ui"}, where);
+    TrainingParameterSpec parameter;
+    parameter.id     = portId(member(item, "id", where), context(where, "id"));
+    if (parameter.id == 0)
+        throw ContractError(context(where, "id") + " 必须大于 0");
+    parameter.nameZh = text(item, "name_zh", where, false);
+    parameter.type   = decljson::decodeType(member(item, "type", where));
+    if (parameter.type.type == Type::Image || parameter.type.type == Type::TrainingSet)
+        throw ContractError(std::string(where) + " 只能声明标量、Array 或 ROI 参数");
+    if (const auto value = optionalValue(item, "default", parameter.type, where))
+        parameter.defaultValue = *value;
+    readConstraints(item, parameter.type, where, parameter.minimum, parameter.maximum, parameter.options);
+    if (const auto *ui = item.find("ui"))
+    {
+        const auto &block = object(*ui, context(where, "ui"));
+        fields(block, {"editor", "step", "decimals"}, context(where, "ui"));
+        parameter.editor = optionalEnumeration<EditorKind>(block.find("editor"), EditorKind::Default,
+                                                           static_cast<int>(EditorKind::Select),
+                                                           context(where, "ui.editor"));
+        if (const auto step = optionalValue(block, "step", parameter.type, context(where, "ui")))
+            parameter.step = *step;
+        if (const auto *decimals = block.find("decimals"))
+        {
+            const auto value = decljson::integer(*decimals, context(where, "ui.decimals"));
+            if (value < 0 || value > std::numeric_limits<int>::max())
+                throw ContractError(context(where, "ui.decimals") + " 必须是非负 int 范围整数");
+            parameter.decimals = static_cast<int>(value);
+        }
+    }
+    return parameter;
+}
+
+TrainingArtifactSpec readTrainingArtifact(const Node &node, std::string_view where)
+{
+    const auto &item = object(node, where);
+    fields(item, {"id", "source_port", "format", "version", "target"}, where);
+    TrainingArtifactSpec artifact;
+    artifact.id     = text(item, "id", where, false);
+    artifact.format = text(item, "format", where, false);
+    if (artifact.id == "." || artifact.id == ".." || artifact.id.find_first_of("/\\:") != std::string::npos)
+        throw ContractError(std::string(where) + ".id 不能用作文件路径");
+    artifact.sourcePort = portId(member(item, "source_port", where), context(where, "source_port"));
+    if (artifact.sourcePort == 0)
+        throw ContractError(context(where, "source_port") + " 必须大于 0");
+    if (const auto *version = item.find("version"))
+    {
+        const auto value = decljson::integer(*version, context(where, "version"));
+        if (value <= 0 || value > std::numeric_limits<int>::max())
+            throw ContractError(context(where, "version") + " 必须是正整数");
+        artifact.version = static_cast<int>(value);
+    }
+    artifact.target = reference(member(item, "target", where), context(where, "target"));
+    return artifact;
+}
+
+AuthoringCall readAuthoringCall(const Node &node, std::string_view where);
+
 void readTraining(const Node &node, ToolDeclaration &declaration)
 {
     const auto &item = object(node, "training");
-    fields(item, {"kind", "asset_param", "helper"}, "training");
+    fields(item, {"kind", "asset_param", "helper", "image", "records", "call", "parameters", "writes", "artifacts"},
+           "training");
     TrainingSpec spec;
     spec.kind = enumeration<TrainingKind>(member(item, "kind", "training"),
                                           static_cast<int>(TrainingKind::StraightEdges), "training.kind");
     spec.assetParam = portId(member(item, "asset_param", "training"), "training.asset_param");
     spec.helper     = optionalText(item, "helper", "training");
+    if (const auto *image = item.find("image"))
+        spec.image = reference(*image, "training.image");
+    readTrainingRecords(member(item, "records", "training"), spec.records);
+    if (const auto *call = item.find("call"))
+        spec.call = readAuthoringCall(*call, "training.call");
+    if (const auto *parameters = item.find("parameters"))
+    {
+        if (parameters->kind != Kind::Array)
+            throw ContractError("training.parameters 必须是数组");
+        for (std::size_t index = 0; index < parameters->items.size(); ++index)
+        {
+            const auto where = std::string("training.parameters[") + std::to_string(index) + "]";
+            auto       parameter = readTrainingParameter(parameters->items[index], where);
+            if (std::any_of(spec.parameters.begin(), spec.parameters.end(),
+                            [&](const TrainingParameterSpec &existing) { return existing.id == parameter.id; }))
+                throw ContractError(where + " 重复声明了参数编号");
+            spec.parameters.push_back(std::move(parameter));
+        }
+    }
+    spec.writes = readWrites(item, "training");
+    if (const auto *artifacts = item.find("artifacts"))
+    {
+        if (artifacts->kind != Kind::Array)
+            throw ContractError("training.artifacts 必须是数组");
+        for (std::size_t index = 0; index < artifacts->items.size(); ++index)
+        {
+            const auto where = std::string("training.artifacts[") + std::to_string(index) + "]";
+            auto       artifact = readTrainingArtifact(artifacts->items[index], where);
+            if (std::any_of(spec.artifacts.begin(), spec.artifacts.end(),
+                            [&](const TrainingArtifactSpec &existing) { return existing.id == artifact.id; }))
+                throw ContractError(where + ".id 重复声明了产物：" + artifact.id);
+            spec.artifacts.push_back(std::move(artifact));
+        }
+    }
     declaration.training = std::move(spec);
+}
+
+AuthoringCall readAuthoringCall(const Node &node, std::string_view where)
+{
+    const auto &item = object(node, where);
+    fields(item, {"tool", "inputs"}, where);
+    AuthoringCall call;
+    call.tool = text(item, "tool", where, false);
+    const auto *inputs = item.find("inputs");
+    if (inputs == nullptr)
+        return call;
+    if (inputs->kind != Kind::Array)
+        throw ContractError(context(where, "inputs") + " 必须是数组");
+    for (std::size_t index = 0; index < inputs->items.size(); ++index)
+    {
+        const auto  entryWhere = context(where, "inputs") + "[" + std::to_string(index) + "]";
+        const auto &entry      = object(inputs->items[index], entryWhere);
+        fields(entry, {"port", "context", "source", "literal", "field_id", "parameter"}, entryWhere);
+        AuthoringInput input;
+        input.port = portId(member(entry, "port", entryWhere), context(entryWhere, "port"));
+        if (input.port == 0)
+            throw ContractError(context(entryWhere, "port") + " 必须大于 0");
+        if (std::any_of(call.inputs.begin(), call.inputs.end(),
+                        [&](const AuthoringInput &existing) { return existing.port == input.port; }))
+            throw ContractError(context(entryWhere, "port") + " 重复声明了助手端口");
+        const int sources = static_cast<int>(entry.has("context")) + static_cast<int>(entry.has("source"))
+                          + static_cast<int>(entry.has("literal")) + static_cast<int>(entry.has("field_id"))
+                          + static_cast<int>(entry.has("parameter"));
+        if (sources != 1)
+            throw ContractError(entryWhere + " 必须且只能声明 context、source、literal、field_id 或 parameter");
+        if (const auto *role = entry.find("context"))
+            input.source = enumeration<ContextRole>(*role, static_cast<int>(ContextRole::TrainingSet),
+                                                    context(entryWhere, "context"));
+        else if (const auto *sourceRef = entry.find("source"))
+            input.source = reference(*sourceRef, context(entryWhere, "source"));
+        else if (const auto *literal = entry.find("literal"))
+        {
+            const auto &block = object(*literal, context(entryWhere, "literal"));
+            fields(block, {"type", "value"}, context(entryWhere, "literal"));
+            AuthoringLiteral value;
+            value.type = decljson::decodeType(member(block, "type", entryWhere));
+            if (value.type.type != Type::Int && value.type.type != Type::Float && value.type.type != Type::Bool
+                && value.type.type != Type::String)
+                throw ContractError(context(entryWhere, "literal") + " 只支持标量常量");
+            value.value = decljson::decodeValue(member(block, "value", entryWhere), value.type);
+            input.source = std::move(value);
+        }
+        else if (const auto *field = entry.find("field_id"))
+        {
+            const auto id = portId(*field, context(entryWhere, "field_id"));
+            if (id == 0)
+                throw ContractError(context(entryWhere, "field_id") + " 必须大于 0");
+            input.source = TrainingFieldRef{id};
+        }
+        else
+        {
+            const auto id = portId(*entry.find("parameter"), context(entryWhere, "parameter"));
+            if (id == 0)
+                throw ContractError(context(entryWhere, "parameter") + " 必须大于 0");
+            input.source = TrainingParameterRef{id};
+        }
+        call.inputs.push_back(std::move(input));
+    }
+    return call;
+}
+
+EasyTouchSpec readEasyTouch(const Node &node)
+{
+    constexpr std::string_view where = "authoring.easy_touch";
+    const auto                &item  = object(node, where);
+    fields(item, {"image", "call", "preview_output", "valid_output", "message_output", "writes"}, where);
+    EasyTouchSpec spec;
+    spec.image = reference(member(item, "image", where), "authoring.easy_touch.image");
+    spec.call  = readAuthoringCall(member(item, "call", where), "authoring.easy_touch.call");
+    spec.previewOutput = portId(member(item, "preview_output", where), "authoring.easy_touch.preview_output");
+    spec.validOutput   = portId(member(item, "valid_output", where), "authoring.easy_touch.valid_output");
+    if (spec.previewOutput == 0 || spec.validOutput == 0)
+        throw ContractError("authoring.easy_touch.preview_output 与 valid_output 必须大于 0");
+    if (const auto *message = item.find("message_output"))
+    {
+        const auto id = portId(*message, "authoring.easy_touch.message_output");
+        if (id == 0)
+            throw ContractError("authoring.easy_touch.message_output 必须大于 0");
+        spec.messageOutput = id;
+    }
+    spec.writes = readWrites(item, "authoring.easy_touch");
+    if (spec.writes.empty())
+        throw ContractError("authoring.easy_touch.writes 必须是非空数组");
+    return spec;
+}
+
+void readAuthoring(const Node &node, ToolDeclaration &declaration)
+{
+    const auto &item = object(node, "authoring");
+    fields(item, {"version", "easy_touch"}, "authoring");
+    const auto version = decljson::integer(member(item, "version", "authoring"), "authoring.version");
+    if (version != 1)
+        throw ContractError("authoring.version 必须为 1");
+    AuthoringSpec spec;
+    if (const auto *touch = item.find("easy_touch"))
+        spec.easyTouch = readEasyTouch(*touch);
+    if (!spec.easyTouch)
+        throw ContractError("authoring 至少声明一个作用域");
+    declaration.authoring = std::move(spec);
 }
 
 void writeReference(decljson::Writer &writer, const PortRef &reference)
@@ -369,7 +668,103 @@ void writeReference(decljson::Writer &writer, const PortRef &reference)
     writer.EndObject();
 }
 
-void writeDefault(decljson::Writer &writer, const char *name, const PortValue &value, const TypeSpec &type)
+void writeAuthoringCall(decljson::Writer &writer, const AuthoringCall &call)
+{
+    writer.StartObject();
+    writer.Key("tool");
+    writer.String(call.tool.c_str(), static_cast<rapidjson::SizeType>(call.tool.size()));
+    if (!call.inputs.empty())
+    {
+        writer.Key("inputs");
+        writer.StartArray();
+        for (const auto &input : call.inputs)
+        {
+            writer.StartObject();
+            writer.Key("port");
+            writer.Uint(input.port);
+            if (const auto *role = std::get_if<ContextRole>(&input.source))
+            {
+                writer.Key("context");
+                writer.Int(static_cast<int>(*role));
+            }
+            else if (const auto *reference = std::get_if<PortRef>(&input.source))
+            {
+                writer.Key("source");
+                writeReference(writer, *reference);
+            }
+            else if (const auto *literal = std::get_if<AuthoringLiteral>(&input.source))
+            {
+                writer.Key("literal");
+                writer.StartObject();
+                writer.Key("type");
+                decljson::encodeType(writer, literal->type);
+                writer.Key("value");
+                decljson::encodeValue(writer, literal->value, literal->type);
+                writer.EndObject();
+            }
+            else if (const auto *field = std::get_if<TrainingFieldRef>(&input.source))
+            {
+                writer.Key("field_id");
+                writer.Uint(field->id);
+            }
+            else
+            {
+                writer.Key("parameter");
+                writer.Uint(std::get<TrainingParameterRef>(input.source).id);
+            }
+            writer.EndObject();
+        }
+        writer.EndArray();
+    }
+    writer.EndObject();
+}
+
+void writeWrites(decljson::Writer &writer, const char *name, const std::vector<AuthoringWrite> &writes)
+{
+    if (writes.empty())
+        return;
+    writer.Key(name);
+    writer.StartArray();
+    for (const auto &entry : writes)
+    {
+        writer.StartObject();
+        writer.Key("source_port");
+        writer.Uint(entry.sourcePort);
+        writer.Key("target");
+        writeReference(writer, entry.target);
+        writer.EndObject();
+    }
+    writer.EndArray();
+}
+
+void writeAuthoring(decljson::Writer &writer, const AuthoringSpec &authoring)
+{
+    writer.Key("authoring");
+    writer.StartObject();
+    writer.Key("version");
+    writer.Int(static_cast<int>(authoring.version));
+    if (const auto &touch = authoring.easyTouch)
+    {
+        writer.Key("easy_touch");
+        writer.StartObject();
+        writer.Key("image");
+        writeReference(writer, touch->image);
+        writer.Key("call");
+        writeAuthoringCall(writer, touch->call);
+        writer.Key("preview_output");
+        writer.Uint(touch->previewOutput);
+        writer.Key("valid_output");
+        writer.Uint(touch->validOutput);
+        if (touch->messageOutput)
+        {
+            writer.Key("message_output");
+            writer.Uint(*touch->messageOutput);
+        }
+        writeWrites(writer, "writes", touch->writes);
+        writer.EndObject();
+    }
+    writer.EndObject();
+}void writeDefault(decljson::Writer &writer, const char *name, const PortValue &value, const TypeSpec &type)
 {
     writer.Key(name);
     decljson::encodeValue(writer, value, type);
@@ -527,7 +922,7 @@ ToolDeclaration readToolDeclaration(std::string_view json, std::string_view sour
         if (root.kind != Kind::Object)
             throw ContractError("工具声明必须是 JSON 对象");
         fields(root, {"schema_version", "name_en", "name_zh", "version", "implementation", "ui", "init_params",
-                      "inputs", "outputs", "node_model", "interaction", "training"},
+                      "inputs", "outputs", "node_model", "interaction", "training", "authoring"},
                "工具声明");
         if (decljson::integer(member(root, "schema_version", "工具声明"), "schema_version") != 1)
             throw ContractError("工具声明 schema_version 必须为 1");
@@ -550,9 +945,21 @@ ToolDeclaration readToolDeclaration(std::string_view json, std::string_view sour
             readTraining(*training, declaration);
         if (const auto *interaction = root.find("interaction"))
             readInteraction(*interaction, declaration);
+        if (const auto *authoring = root.find("authoring"))
+            readAuthoring(*authoring, declaration);
         declaration.initParams = ports(root, PortStage::Init);
         declaration.inputs     = ports(root, PortStage::Inputs);
         declaration.outputs    = ports(root, PortStage::Outputs);
+        if (declaration.training)
+        {
+            const auto &spec = *declaration.training;
+            const auto  input = std::find_if(declaration.inputs.begin(), declaration.inputs.end(),
+                                            [&](const PortDefinition &port) { return port.id == spec.image.id; });
+            if (spec.image.stage != PortStage::Inputs || input == declaration.inputs.end())
+                throw ContractError("training.image 必须引用一个输入端口");
+            if (input->type.type != Type::Image)
+                throw ContractError("training.image 必须引用 Image 输入：" + input->nameZh);
+        }
         return declaration;
     }
     catch (const std::exception &error)
@@ -644,6 +1051,8 @@ std::string writeToolDeclaration(const ToolDeclaration &declaration)
         writer.Key("node_model");
         writer.Int(static_cast<int>(declaration.nodeModel));
     }
+    if (declaration.authoring)
+        writeAuthoring(writer, *declaration.authoring);
     if (declaration.training)
     {
         writer.Key("training");
@@ -657,6 +1066,133 @@ std::string writeToolDeclaration(const ToolDeclaration &declaration)
             writer.Key("helper");
             writer.String(declaration.training->helper.c_str(),
                           static_cast<rapidjson::SizeType>(declaration.training->helper.size()));
+        }
+        writer.Key("image");
+        writeReference(writer, declaration.training->image);
+        writer.Key("records");
+        writer.StartObject();
+        if (declaration.training->records.maxCount != 0)
+        {
+            writer.Key("max");
+            writer.Int(declaration.training->records.maxCount);
+        }
+        writer.Key("fields");
+        writer.StartArray();
+        for (const auto &field : declaration.training->records.fields)
+        {
+            writer.StartObject();
+            writer.Key("id");
+            writer.Uint(field.id);
+            writer.Key("name_zh");
+            writer.String(field.nameZh.c_str(), static_cast<rapidjson::SizeType>(field.nameZh.size()));
+            writer.Key("type");
+            decljson::encodeType(writer, field.type);
+            if (field.roi)
+            {
+                writer.Key("roi");
+                writer.Bool(true);
+            }
+            if (field.minRegions != 0 || field.maxRegions != 0)
+            {
+                writer.Key("regions");
+                writer.StartObject();
+                if (field.minRegions != 0)
+                {
+                    writer.Key("min");
+                    writer.Int(field.minRegions);
+                }
+                if (field.maxRegions != 0)
+                {
+                    writer.Key("max");
+                    writer.Int(field.maxRegions);
+                }
+                writer.EndObject();
+            }
+            writer.EndObject();
+        }
+        writer.EndArray();
+        writer.EndObject();
+        if (!declaration.training->call.tool.empty())
+        {
+            writer.Key("call");
+            writeAuthoringCall(writer, declaration.training->call);
+        }
+        if (!declaration.training->parameters.empty())
+        {
+            writer.Key("parameters");
+            writer.StartArray();
+            for (const auto &parameter : declaration.training->parameters)
+            {
+                writer.StartObject();
+                writer.Key("id");
+                writer.Uint(parameter.id);
+                writer.Key("name_zh");
+                writer.String(parameter.nameZh.c_str(), static_cast<rapidjson::SizeType>(parameter.nameZh.size()));
+                writer.Key("type");
+                decljson::encodeType(writer, parameter.type);
+                if (!std::holds_alternative<Missing>(parameter.defaultValue))
+                    writeDefault(writer, "default", parameter.defaultValue, parameter.type);
+                if (parameter.minimum || parameter.maximum || !parameter.options.empty())
+                {
+                    writer.Key("constraints");
+                    writer.StartObject();
+                    if (parameter.minimum)
+                        writeDefault(writer, "min", *parameter.minimum, parameter.type);
+                    if (parameter.maximum)
+                        writeDefault(writer, "max", *parameter.maximum, parameter.type);
+                    if (!parameter.options.empty())
+                    {
+                        writer.Key("options");
+                        writer.StartArray();
+                        for (const auto &option : parameter.options)
+                            decljson::encodeValue(writer, option, parameter.type);
+                        writer.EndArray();
+                    }
+                    writer.EndObject();
+                }
+                if (parameter.editor != EditorKind::Default || parameter.step || parameter.decimals)
+                {
+                    writer.Key("ui");
+                    writer.StartObject();
+                    if (parameter.editor != EditorKind::Default)
+                    {
+                        writer.Key("editor");
+                        writer.Int(static_cast<int>(parameter.editor));
+                    }
+                    if (parameter.step)
+                        writeDefault(writer, "step", *parameter.step, parameter.type);
+                    if (parameter.decimals)
+                    {
+                        writer.Key("decimals");
+                        writer.Int(*parameter.decimals);
+                    }
+                    writer.EndObject();
+                }
+                writer.EndObject();
+            }
+            writer.EndArray();
+        }
+        writeWrites(writer, "writes", declaration.training->writes);
+        if (!declaration.training->artifacts.empty())
+        {
+            writer.Key("artifacts");
+            writer.StartArray();
+            for (const auto &artifact : declaration.training->artifacts)
+            {
+                writer.StartObject();
+                writer.Key("id");
+                writer.String(artifact.id.c_str(), static_cast<rapidjson::SizeType>(artifact.id.size()));
+                writer.Key("source_port");
+                writer.Uint(artifact.sourcePort);
+                writer.Key("format");
+                writer.String(artifact.format.c_str(), static_cast<rapidjson::SizeType>(artifact.format.size()));
+                writer.Key("version");
+                writer.Int(artifact.version);
+                writer.Key("target");
+                writeReference(writer, artifact.target);
+                writer.EndObject();
+            }
+            writer.EndArray();
         }
         writer.EndObject();
     }

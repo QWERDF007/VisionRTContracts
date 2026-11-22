@@ -318,7 +318,8 @@ TypeSpec decodeType(const Node &node)
     if (type == nullptr)
         throw ContractError("类型缺少 type");
     const auto code = integer(*type, "type");
-    if (code < 0 || code > static_cast<std::int64_t>(Type::ROI))
+    // TrainingSet is declaration-only: a trainer port names it, and no declaration carries a value.
+    if (code < 0 || code > static_cast<std::int64_t>(Type::TrainingSet))
         throw ContractError("未知类型编码");
     TypeSpec spec;
     spec.type = static_cast<Type>(code);
