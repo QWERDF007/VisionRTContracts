@@ -251,12 +251,17 @@ struct TrainingSpec
     // Trainer output -> workbench target, written in the same transaction that publishes the asset.
     std::vector<AuthoringWrite>        writes;
     std::vector<TrainingArtifactSpec>  artifacts;
+    // Optional trainer output the training page draws over the reference picture: the geometry the
+    // trainer actually measured. `0` means the trainer publishes nothing to look at, and the host
+    // then draws nothing — it never derives an endpoint from the model itself.
+    PortId overlayOutput = 0;
 
     bool operator==(const TrainingSpec &other) const
     {
         if (kind != other.kind || assetParam != other.assetParam || helper != other.helper
             || image != other.image || records != other.records || call != other.call
             || writes != other.writes || artifacts != other.artifacts
+            || overlayOutput != other.overlayOutput
             || parameters.size() != other.parameters.size())
             return false;
         for (std::size_t index = 0; index < parameters.size(); ++index)

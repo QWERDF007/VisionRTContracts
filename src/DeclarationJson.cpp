@@ -510,7 +510,8 @@ AuthoringCall readAuthoringCall(const Node &node, std::string_view where);
 void readTraining(const Node &node, ToolDeclaration &declaration)
 {
     const auto &item = object(node, "training");
-    fields(item, {"kind", "asset_param", "helper", "image", "records", "call", "parameters", "writes", "artifacts"},
+    fields(item, {"kind", "asset_param", "helper", "image", "records", "call", "parameters", "writes", "artifacts",
+                  "overlay_output"},
            "training");
     TrainingSpec spec;
     spec.kind = enumeration<TrainingKind>(member(item, "kind", "training"),
@@ -535,6 +536,14 @@ void readTraining(const Node &node, ToolDeclaration &declaration)
                 throw ContractError(where + " 重复声明了参数编号");
             spec.parameters.push_back(std::move(parameter));
         }
+    }
+    if (const auto *overlay = item.find("overlay_output"))
+    {
+        spec.overlayOutput = portId(*overlay, "training.overlay_output");
+        if (spec.overlayOutput == 0)
+            throw ContractError("training.overlay_output 必须大于 0");
+        if (spec.call.tool.empty())
+            throw ContractError("training.overlay_output 需要训练器调用");
     }
     spec.writes = readWrites(item, "training");
     if (const auto *artifacts = item.find("artifacts"))
@@ -1173,6 +1182,11 @@ std::string writeToolDeclaration(const ToolDeclaration &declaration)
             writer.EndArray();
         }
         writeWrites(writer, "writes", declaration.training->writes);
+        if (declaration.training->overlayOutput != 0)
+        {
+            writer.Key("overlay_output");
+            writer.Uint(declaration.training->overlayOutput);
+        }
         if (!declaration.training->artifacts.empty())
         {
             writer.Key("artifacts");

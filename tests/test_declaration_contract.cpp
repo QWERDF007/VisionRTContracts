@@ -194,6 +194,35 @@ try
         require(restored.training && restored.training->records == records, "training survives rewrite");
         require(writeToolDeclaration(restored) == written, "training rewrite is stable");
     }
+
+    // The trainer may name one of its outputs as the geometry the training page draws. The host then
+    // shows what the trainer measured instead of deriving endpoints from a model it cannot read.
+    {
+        const auto trained = readToolDeclaration(R"({"schema_version":1,"name_en":"edges","name_zh":"直边",
+            "version":"1","implementation":{"kind":0},
+            "init_params":[{"id":0,"name_zh":"训练数据","type":{"type":3}},
+                           {"id":1,"name_zh":"模型","type":{"type":3}}],
+            "inputs":[{"id":1,"name_zh":"图像","type":{"type":4}}],
+            "training":{"kind":1,"asset_param":0,"image":{"stage":1,"id":1},
+              "records":{"max":1,"fields":[{"id":1,"name_zh":"参考边","type":{"type":6},"roi":true,
+                                            "regions":{"min":2,"max":2}}]},
+              "call":{"tool":"TrainStraightBorders","inputs":[{"port":1,"context":4}]},
+              "artifacts":[{"id":"edge-model","source_port":2,"format":"edge","version":1,
+                            "target":{"stage":0,"id":1}}],
+              "overlay_output":3}})", "直边.json");
+        require(trained.training && trained.training->overlayOutput == 3, "training overlay output");
+        const auto written = writeToolDeclaration(trained);
+        const auto restored = readToolDeclaration(written, "回写.json");
+        require(restored.training->overlayOutput == 3, "overlay output survives rewrite");
+        require(writeToolDeclaration(restored) == written, "overlay rewrite is stable");
+    }
+    rejects([] { readToolDeclaration(R"({"schema_version":1,"name_en":"a","name_zh":"b","version":"1",
+        "implementation":{"kind":0},"init_params":[{"id":0,"name_zh":"路径","type":{"type":3}}],
+        "inputs":[{"id":1,"name_zh":"图像","type":{"type":4}}],
+        "training":{"kind":1,"asset_param":0,"image":{"stage":1,"id":1},
+          "records":{"fields":[{"id":1,"name_zh":"a","type":{"type":6},"roi":true}]},
+          "overlay_output":3}})"); },
+            "overlay_output 需要训练器调用");
     rejects([] { readToolDeclaration(R"({"schema_version":1,"name_en":"a","name_zh":"b","version":"1",
         "implementation":{"kind":0},"init_params":[{"id":0,"name_zh":"路径","type":{"type":3}}],
         "inputs":[{"id":1,"name_zh":"图像","type":{"type":4}}],
