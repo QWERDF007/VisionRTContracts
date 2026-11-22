@@ -116,14 +116,14 @@ try
 
     // A tool author's own build reads and rewrites a declaration with no GUI framework linked.
     const auto declaration = readToolDeclaration(R"({
-        "schema_version": 1,
+        "schema_version": 2,
         "name_en": "consumer.tool",
         "name_zh": "消费者工具",
         "version": "1.0.0",
-        "implementation": { "kind": 0 },
-        "init_params": [ { "id": 0, "name_zh": "模型", "type": { "type": 3 } } ],
-        "inputs": [ { "id": 1, "name_zh": "阈值", "type": { "type": 0 }, "default": 9007199254740993 } ],
-        "outputs": [ { "id": 2, "name_zh": "结果", "type": { "type": 0 } } ]
+        "implementation": { "kind": "cpp" },
+        "init_params": [ { "id": 0, "name_zh": "模型", "type": "string" } ],
+        "inputs": [ { "id": 1, "name_zh": "阈值", "type": "int", "default": 9007199254740993 } ],
+        "outputs": [ { "id": 2, "name_zh": "结果", "type": "int" } ]
     })");
     assert(declaration.nameEn == "consumer.tool" && declaration.inputs.size() == 1);
     assert(std::get<std::int64_t>(declaration.inputs[0].defaultValue) == 9007199254740993LL);

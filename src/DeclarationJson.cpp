@@ -1,5 +1,6 @@
 #include "visionrt/contracts/DeclarationJson.h"
 
+#include "DeclarationNames.h"
 #include "DeclarationValue.h"
 #include "JsonDocument.h"
 
@@ -65,21 +66,12 @@ std::string optionalText(const Node &node, std::string_view name, std::string_vi
     return value->text;
 }
 
-// Enumerations travel as their numeric code. The literal name is never accepted: a file states the
-// number the ABI uses, so a header that renames an enumerator cannot silently change a declaration.
-template<class Enum>
-Enum enumeration(const Node &node, int last, std::string_view where)
-{
-    const auto value = decljson::integer(node, where);
-    if (value < 0 || value > last)
-        throw ContractError(std::string(where) + " 不是已知的枚举编码");
-    return static_cast<Enum>(value);
-}
+using decljson::enumeration;
 
 template<class Enum>
-Enum optionalEnumeration(const Node *node, Enum fallback, int last, std::string_view where)
+Enum optionalEnumeration(const Node *node, Enum fallback, std::string_view where)
 {
-    return node == nullptr ? fallback : enumeration<Enum>(*node, last, where);
+    return node == nullptr ? fallback : enumeration<Enum>(*node, where);
 }
 
 // A declaration names files inside the tool's own tree; an absolute path would make the tool depend
@@ -92,15 +84,15 @@ std::filesystem::path relativePath(const std::string &text, std::string_view whe
     return path.lexically_normal();
 }
 
+PortId portId(const Node &node, std::string_view where);
+
 PortRef reference(const Node &node, std::string_view where)
 {
     const auto &block = object(node, where);
     fields(block, {"stage", "id"}, where);
     PortRef result;
-    result.stage = enumeration<PortStage>(member(block, "stage", where), 2, context(where, "stage"));
-    result.id    = static_cast<PortId>(decljson::integer(member(block, "id", where), "id"));
-    if (result.id > std::numeric_limits<PortId>::max())
-        throw ContractError(context(where, "id") + " 必须是 32 位无符号整数");
+    result.stage = enumeration<PortStage>(member(block, "stage", where), context(where, "stage"));
+    result.id    = portId(member(block, "id", where), context(where, "id"));
     return result;
 }
 
@@ -209,15 +201,14 @@ std::vector<PortDefinition> ports(const Node &root, PortStage stage)
         {
             const auto &block = object(*ui, where + ".ui");
             fields(block, {"editor", "tab", "group", "step", "decimals", "options_provider"}, where + ".ui");
-            port.editor = optionalEnumeration<EditorKind>(block.find("editor"), EditorKind::Default,
-                                                          static_cast<int>(EditorKind::Select), where + ".ui.editor");
-            port.tab = optionalEnumeration<ParameterTab>(block.find("tab"), ParameterTab::BasicInput,
-                                                         static_cast<int>(ParameterTab::Postprocess), where + ".ui.tab");
+            port.editor
+                = optionalEnumeration<EditorKind>(block.find("editor"), EditorKind::Default, where + ".ui.editor");
+            port.tab
+                = optionalEnumeration<ParameterTab>(block.find("tab"), ParameterTab::BasicInput, where + ".ui.tab");
             if (block.has("group"))
                 port.group = optionalText(block, "group", where + ".ui");
             port.optionsProvider = optionalEnumeration<OptionsProvider>(
-                block.find("options_provider"), OptionsProvider::None, static_cast<int>(OptionsProvider::GpuDevices),
-                where + ".ui.options_provider");
+                block.find("options_provider"), OptionsProvider::None, where + ".ui.options_provider");
             if (const auto step = optionalValue(block, "step", port.type, where + ".ui"))
                 port.step = *step;
             if (const auto *decimals = block.find("decimals"))
@@ -244,7 +235,6 @@ std::vector<PortDefinition> ports(const Node &root, PortStage stage)
             const auto &block = object(*display, where + ".display");
             fields(block, {"color_order", "visible"}, where + ".display");
             port.colorOrder = optionalEnumeration<ColorOrder>(block.find("color_order"), ColorOrder::Automatic,
-                                                              static_cast<int>(ColorOrder::RGBA),
                                                               where + ".display.color_order");
             if (const auto *visible = block.find("visible"))
             {
@@ -272,8 +262,7 @@ void readImplementation(const Node &root, ToolDeclaration &declaration)
 {
     const auto &implementation = object(member(root, "implementation", "工具声明"), "implementation");
     fields(implementation, {"kind", "binding", "package", "file", "symbol", "resources"}, "implementation");
-    const auto kind = enumeration<ToolKind>(member(implementation, "kind", "implementation"),
-                                            static_cast<int>(ToolKind::Host), "implementation.kind");
+    const auto kind    = enumeration<ToolKind>(member(implementation, "kind", "implementation"), "implementation.kind");
     declaration.kind = kind;
     const auto allowed = [kind](std::string_view name)
     {
@@ -317,43 +306,6 @@ void readImplementation(const Node &root, ToolDeclaration &declaration)
             declaration.resources.push_back(relativePath(value.text, "implementation.resources"));
         }
     }
-}
-
-void readInteraction(const Node &node, ToolDeclaration &declaration)
-{
-    const auto &item = object(node, "interaction");
-    fields(item, {"helper", "inputs", "proposals", "roi_kinds"}, "interaction");
-    InteractionMapping mapping;
-    mapping.helperNameEn = text(item, "helper", "interaction");
-    for (const auto *name : {"inputs", "proposals"})
-    {
-        const auto *values = item.find(name);
-        if (values == nullptr)
-            continue;
-        if (values->kind != Kind::Array)
-            throw ContractError(std::string("interaction.") + name + " 必须是数组");
-        auto &target = std::string_view(name) == "inputs" ? mapping.inputs : mapping.proposals;
-        for (std::size_t index = 0; index < values->items.size(); ++index)
-        {
-            const auto  where = std::string("interaction.") + name + "[" + std::to_string(index) + "]";
-            const auto &entry = object(values->items[index], where);
-            const auto  targetName = std::string_view(name) == "inputs" ? "source" : "target";
-            fields(entry, {"helper_port_id", targetName}, where);
-            const auto helper = portId(member(entry, "helper_port_id", where), where + ".helper_port_id");
-            if (helper == 0)
-                throw ContractError(where + ".helper_port_id 必须大于 0");
-            target.emplace(helper, reference(member(entry, targetName, where), where + "." + std::string(targetName)));
-        }
-    }
-    if (const auto *kinds = item.find("roi_kinds"))
-    {
-        if (kinds->kind != Kind::Array)
-            throw ContractError("interaction.roi_kinds 必须是数组");
-        for (const auto &value : kinds->items)
-            mapping.roiKinds.push_back(enumeration<RoiKind>(value, static_cast<int>(RoiKind::PointSet),
-                                                            "interaction.roi_kinds"));
-    }
-    declaration.interaction = std::move(mapping);
 }
 
 TrainingFieldSpec readTrainingField(const Node &node, std::string_view where)
@@ -421,9 +373,9 @@ void readTrainingRecords(const Node &node, TrainingRecordsSpec &records)
         throw ContractError("training.records.fields 只能有一个画布 ROI 字段");
 }
 
-std::vector<AuthoringWrite> readWrites(const Node &item, std::string_view where)
+std::vector<OutputMapping> readWrites(const Node &item, std::string_view where)
 {
-    std::vector<AuthoringWrite> result;
+    std::vector<OutputMapping>  result;
     const auto                 *writes = item.find("writes");
     if (writes == nullptr)
         return result;
@@ -434,13 +386,13 @@ std::vector<AuthoringWrite> readWrites(const Node &item, std::string_view where)
         const auto  writeWhere = std::string(where) + ".writes[" + std::to_string(index) + "]";
         const auto &entry      = object(writes->items[index], writeWhere);
         fields(entry, {"source_port", "target"}, writeWhere);
-        AuthoringWrite write;
+        OutputMapping write;
         write.sourcePort = portId(member(entry, "source_port", writeWhere), writeWhere + ".source_port");
         if (write.sourcePort == 0)
             throw ContractError(writeWhere + ".source_port 必须大于 0");
         write.target = reference(member(entry, "target", writeWhere), writeWhere + ".target");
         if (std::any_of(result.begin(), result.end(),
-                        [&](const AuthoringWrite &existing) { return existing.target == write.target; }))
+                        [&](const OutputMapping &existing) { return existing.target == write.target; }))
             throw ContractError(writeWhere + ".target 重复写入同一端口：" + formatPortRef(write.target));
         result.push_back(std::move(write));
     }
@@ -466,9 +418,8 @@ TrainingParameterSpec readTrainingParameter(const Node &node, std::string_view w
     {
         const auto &block = object(*ui, context(where, "ui"));
         fields(block, {"editor", "step", "decimals"}, context(where, "ui"));
-        parameter.editor = optionalEnumeration<EditorKind>(block.find("editor"), EditorKind::Default,
-                                                           static_cast<int>(EditorKind::Select),
-                                                           context(where, "ui.editor"));
+        parameter.editor
+            = optionalEnumeration<EditorKind>(block.find("editor"), EditorKind::Default, context(where, "ui.editor"));
         if (const auto step = optionalValue(block, "step", parameter.type, context(where, "ui")))
             parameter.step = *step;
         if (const auto *decimals = block.find("decimals"))
@@ -505,24 +456,18 @@ TrainingArtifactSpec readTrainingArtifact(const Node &node, std::string_view whe
     return artifact;
 }
 
-AuthoringCall readAuthoringCall(const Node &node, std::string_view where);
+ToolCall readToolCall(const Node &node, std::string_view where);
 
 void readTraining(const Node &node, ToolDeclaration &declaration)
 {
     const auto &item = object(node, "training");
-    fields(item, {"kind", "asset_param", "helper", "image", "records", "call", "parameters", "writes", "artifacts",
-                  "overlay_output"},
-           "training");
+    fields(item, {"image", "records", "call", "parameters", "writes", "artifacts", "overlay_output"}, "training");
     TrainingSpec spec;
-    spec.kind = enumeration<TrainingKind>(member(item, "kind", "training"),
-                                          static_cast<int>(TrainingKind::StraightEdges), "training.kind");
-    spec.assetParam = portId(member(item, "asset_param", "training"), "training.asset_param");
-    spec.helper     = optionalText(item, "helper", "training");
     if (const auto *image = item.find("image"))
         spec.image = reference(*image, "training.image");
     readTrainingRecords(member(item, "records", "training"), spec.records);
     if (const auto *call = item.find("call"))
-        spec.call = readAuthoringCall(*call, "training.call");
+        spec.call = readToolCall(*call, "training.call");
     if (const auto *parameters = item.find("parameters"))
     {
         if (parameters->kind != Kind::Array)
@@ -560,14 +505,16 @@ void readTraining(const Node &node, ToolDeclaration &declaration)
             spec.artifacts.push_back(std::move(artifact));
         }
     }
+    if (spec.call.tool.empty() || (spec.writes.empty() && spec.artifacts.empty()))
+        throw ContractError("training 需要训练器调用及参数或模型产物");
     declaration.training = std::move(spec);
 }
 
-AuthoringCall readAuthoringCall(const Node &node, std::string_view where)
+ToolCall readToolCall(const Node &node, std::string_view where)
 {
     const auto &item = object(node, where);
     fields(item, {"tool", "inputs"}, where);
-    AuthoringCall call;
+    ToolCall call;
     call.tool = text(item, "tool", where, false);
     const auto *inputs = item.find("inputs");
     if (inputs == nullptr)
@@ -579,12 +526,12 @@ AuthoringCall readAuthoringCall(const Node &node, std::string_view where)
         const auto  entryWhere = context(where, "inputs") + "[" + std::to_string(index) + "]";
         const auto &entry      = object(inputs->items[index], entryWhere);
         fields(entry, {"port", "context", "source", "literal", "field_id", "parameter"}, entryWhere);
-        AuthoringInput input;
+        ToolCallInput input;
         input.port = portId(member(entry, "port", entryWhere), context(entryWhere, "port"));
         if (input.port == 0)
             throw ContractError(context(entryWhere, "port") + " 必须大于 0");
         if (std::any_of(call.inputs.begin(), call.inputs.end(),
-                        [&](const AuthoringInput &existing) { return existing.port == input.port; }))
+                        [&](const ToolCallInput &existing) { return existing.port == input.port; }))
             throw ContractError(context(entryWhere, "port") + " 重复声明了助手端口");
         const int sources = static_cast<int>(entry.has("context")) + static_cast<int>(entry.has("source"))
                           + static_cast<int>(entry.has("literal")) + static_cast<int>(entry.has("field_id"))
@@ -592,15 +539,18 @@ AuthoringCall readAuthoringCall(const Node &node, std::string_view where)
         if (sources != 1)
             throw ContractError(entryWhere + " 必须且只能声明 context、source、literal、field_id 或 parameter");
         if (const auto *role = entry.find("context"))
-            input.source = enumeration<ContextRole>(*role, static_cast<int>(ContextRole::TrainingSet),
-                                                    context(entryWhere, "context"));
+        {
+            if (role->kind != Kind::String || role->text != "training_set")
+                throw ContractError(entryWhere + ".context 只支持 training_set");
+            input.source = TrainingSetSource{};
+        }
         else if (const auto *sourceRef = entry.find("source"))
             input.source = reference(*sourceRef, context(entryWhere, "source"));
         else if (const auto *literal = entry.find("literal"))
         {
             const auto &block = object(*literal, context(entryWhere, "literal"));
             fields(block, {"type", "value"}, context(entryWhere, "literal"));
-            AuthoringLiteral value;
+            TypedLiteral value;
             value.type = decljson::decodeType(member(block, "type", entryWhere));
             if (value.type.type != Type::Int && value.type.type != Type::Float && value.type.type != Type::Bool
                 && value.type.type != Type::String)
@@ -627,57 +577,17 @@ AuthoringCall readAuthoringCall(const Node &node, std::string_view where)
     return call;
 }
 
-EasyTouchSpec readEasyTouch(const Node &node)
-{
-    constexpr std::string_view where = "authoring.easy_touch";
-    const auto                &item  = object(node, where);
-    fields(item, {"image", "call", "preview_output", "valid_output", "message_output", "writes"}, where);
-    EasyTouchSpec spec;
-    spec.image = reference(member(item, "image", where), "authoring.easy_touch.image");
-    spec.call  = readAuthoringCall(member(item, "call", where), "authoring.easy_touch.call");
-    spec.previewOutput = portId(member(item, "preview_output", where), "authoring.easy_touch.preview_output");
-    spec.validOutput   = portId(member(item, "valid_output", where), "authoring.easy_touch.valid_output");
-    if (spec.previewOutput == 0 || spec.validOutput == 0)
-        throw ContractError("authoring.easy_touch.preview_output 与 valid_output 必须大于 0");
-    if (const auto *message = item.find("message_output"))
-    {
-        const auto id = portId(*message, "authoring.easy_touch.message_output");
-        if (id == 0)
-            throw ContractError("authoring.easy_touch.message_output 必须大于 0");
-        spec.messageOutput = id;
-    }
-    spec.writes = readWrites(item, "authoring.easy_touch");
-    if (spec.writes.empty())
-        throw ContractError("authoring.easy_touch.writes 必须是非空数组");
-    return spec;
-}
-
-void readAuthoring(const Node &node, ToolDeclaration &declaration)
-{
-    const auto &item = object(node, "authoring");
-    fields(item, {"version", "easy_touch"}, "authoring");
-    const auto version = decljson::integer(member(item, "version", "authoring"), "authoring.version");
-    if (version != 1)
-        throw ContractError("authoring.version 必须为 1");
-    AuthoringSpec spec;
-    if (const auto *touch = item.find("easy_touch"))
-        spec.easyTouch = readEasyTouch(*touch);
-    if (!spec.easyTouch)
-        throw ContractError("authoring 至少声明一个作用域");
-    declaration.authoring = std::move(spec);
-}
-
 void writeReference(decljson::Writer &writer, const PortRef &reference)
 {
     writer.StartObject();
     writer.Key("stage");
-    writer.Int(static_cast<int>(reference.stage));
+    writer.String(decljson::wireName(reference.stage));
     writer.Key("id");
     writer.Uint(reference.id);
     writer.EndObject();
 }
 
-void writeAuthoringCall(decljson::Writer &writer, const AuthoringCall &call)
+void writeToolCall(decljson::Writer &writer, const ToolCall &call)
 {
     writer.StartObject();
     writer.Key("tool");
@@ -691,17 +601,17 @@ void writeAuthoringCall(decljson::Writer &writer, const AuthoringCall &call)
             writer.StartObject();
             writer.Key("port");
             writer.Uint(input.port);
-            if (const auto *role = std::get_if<ContextRole>(&input.source))
+            if (const auto *role = std::get_if<TrainingSetSource>(&input.source))
             {
                 writer.Key("context");
-                writer.Int(static_cast<int>(*role));
+                writer.String("training_set");
             }
             else if (const auto *reference = std::get_if<PortRef>(&input.source))
             {
                 writer.Key("source");
                 writeReference(writer, *reference);
             }
-            else if (const auto *literal = std::get_if<AuthoringLiteral>(&input.source))
+            else if (const auto *literal = std::get_if<TypedLiteral>(&input.source))
             {
                 writer.Key("literal");
                 writer.StartObject();
@@ -728,7 +638,7 @@ void writeAuthoringCall(decljson::Writer &writer, const AuthoringCall &call)
     writer.EndObject();
 }
 
-void writeWrites(decljson::Writer &writer, const char *name, const std::vector<AuthoringWrite> &writes)
+void writeWrites(decljson::Writer &writer, const char *name, const std::vector<OutputMapping> &writes)
 {
     if (writes.empty())
         return;
@@ -746,34 +656,7 @@ void writeWrites(decljson::Writer &writer, const char *name, const std::vector<A
     writer.EndArray();
 }
 
-void writeAuthoring(decljson::Writer &writer, const AuthoringSpec &authoring)
-{
-    writer.Key("authoring");
-    writer.StartObject();
-    writer.Key("version");
-    writer.Int(static_cast<int>(authoring.version));
-    if (const auto &touch = authoring.easyTouch)
-    {
-        writer.Key("easy_touch");
-        writer.StartObject();
-        writer.Key("image");
-        writeReference(writer, touch->image);
-        writer.Key("call");
-        writeAuthoringCall(writer, touch->call);
-        writer.Key("preview_output");
-        writer.Uint(touch->previewOutput);
-        writer.Key("valid_output");
-        writer.Uint(touch->validOutput);
-        if (touch->messageOutput)
-        {
-            writer.Key("message_output");
-            writer.Uint(*touch->messageOutput);
-        }
-        writeWrites(writer, "writes", touch->writes);
-        writer.EndObject();
-    }
-    writer.EndObject();
-}void writeDefault(decljson::Writer &writer, const char *name, const PortValue &value, const TypeSpec &type)
+void writeDefault(decljson::Writer &writer, const char *name, const PortValue &value, const TypeSpec &type)
 {
     writer.Key(name);
     decljson::encodeValue(writer, value, type);
@@ -850,12 +733,12 @@ void writePorts(decljson::Writer &writer, std::string_view direction, const std:
             if (port.editor != EditorKind::Default)
             {
                 writer.Key("editor");
-                writer.Int(static_cast<int>(port.editor));
+                writer.String(decljson::wireName(port.editor));
             }
             if (stage != PortStage::Outputs && port.tab != ParameterTab::BasicInput)
             {
                 writer.Key("tab");
-                writer.Int(static_cast<int>(port.tab));
+                writer.String(decljson::wireName(port.tab));
             }
             if (!port.group.empty())
             {
@@ -865,7 +748,7 @@ void writePorts(decljson::Writer &writer, std::string_view direction, const std:
             if (port.optionsProvider != OptionsProvider::None)
             {
                 writer.Key("options_provider");
-                writer.Int(static_cast<int>(port.optionsProvider));
+                writer.String(decljson::wireName(port.optionsProvider));
             }
             if (port.step)
                 writeDefault(writer, "step", *port.step, port.type);
@@ -911,7 +794,7 @@ void writePorts(decljson::Writer &writer, std::string_view direction, const std:
             if (port.colorOrder != ColorOrder::Automatic)
             {
                 writer.Key("color_order");
-                writer.Int(static_cast<int>(port.colorOrder));
+                writer.String(decljson::wireName(port.colorOrder));
             }
             writer.EndObject();
         }
@@ -930,11 +813,12 @@ ToolDeclaration readToolDeclaration(std::string_view json, std::string_view sour
         const auto root = decljson::parse(json);
         if (root.kind != Kind::Object)
             throw ContractError("工具声明必须是 JSON 对象");
-        fields(root, {"schema_version", "name_en", "name_zh", "version", "implementation", "ui", "init_params",
-                      "inputs", "outputs", "node_model", "interaction", "training", "authoring"},
+        fields(root,
+               {"schema_version", "name_en", "name_zh", "version", "implementation", "ui", "init_params", "inputs",
+                "outputs", "node_model", "training"},
                "工具声明");
-        if (decljson::integer(member(root, "schema_version", "工具声明"), "schema_version") != 1)
-            throw ContractError("工具声明 schema_version 必须为 1");
+        if (decljson::integer(member(root, "schema_version", "工具声明"), "schema_version") != 2)
+            throw ContractError("工具声明 schema_version 必须为 2");
         ToolDeclaration declaration;
         declaration.nameEn  = text(root, "name_en", "工具声明");
         declaration.nameZh  = text(root, "name_zh", "工具声明");
@@ -944,18 +828,12 @@ ToolDeclaration readToolDeclaration(std::string_view json, std::string_view sour
         {
             const auto &block = object(*ui, "ui");
             fields(block, {"visibility"}, "ui");
-            declaration.visibility = optionalEnumeration<ToolVisibility>(
-                block.find("visibility"), ToolVisibility::Normal, static_cast<int>(ToolVisibility::Assist),
-                "ui.visibility");
+            declaration.visibility = optionalEnumeration<ToolVisibility>(block.find("visibility"),
+                                                                         ToolVisibility::Normal, "ui.visibility");
         }
-        declaration.nodeModel = optionalEnumeration<NodeModel>(root.find("node_model"), NodeModel::Fixed,
-                                                               static_cast<int>(NodeModel::Select), "node_model");
+        declaration.nodeModel = optionalEnumeration<NodeModel>(root.find("node_model"), NodeModel::Fixed, "node_model");
         if (const auto *training = root.find("training"))
             readTraining(*training, declaration);
-        if (const auto *interaction = root.find("interaction"))
-            readInteraction(*interaction, declaration);
-        if (const auto *authoring = root.find("authoring"))
-            readAuthoring(*authoring, declaration);
         declaration.initParams = ports(root, PortStage::Init);
         declaration.inputs     = ports(root, PortStage::Inputs);
         declaration.outputs    = ports(root, PortStage::Outputs);
@@ -997,7 +875,7 @@ std::string writeToolDeclaration(const ToolDeclaration &declaration)
     decljson::Writer         writer(buffer);
     writer.StartObject();
     writer.Key("schema_version");
-    writer.Int(1);
+    writer.Int(2);
     writer.Key("name_en");
     writer.String(declaration.nameEn.c_str(), static_cast<rapidjson::SizeType>(declaration.nameEn.size()));
     writer.Key("name_zh");
@@ -1007,7 +885,7 @@ std::string writeToolDeclaration(const ToolDeclaration &declaration)
     writer.Key("implementation");
     writer.StartObject();
     writer.Key("kind");
-    writer.Int(static_cast<int>(declaration.kind));
+    writer.String(decljson::wireName(declaration.kind));
     switch (declaration.kind)
     {
     case ToolKind::Cpp:
@@ -1049,7 +927,7 @@ std::string writeToolDeclaration(const ToolDeclaration &declaration)
         writer.Key("ui");
         writer.StartObject();
         writer.Key("visibility");
-        writer.Int(static_cast<int>(declaration.visibility));
+        writer.String(decljson::wireName(declaration.visibility));
         writer.EndObject();
     }
     writePorts(writer, "init_params", declaration.initParams, PortStage::Init);
@@ -1058,24 +936,13 @@ std::string writeToolDeclaration(const ToolDeclaration &declaration)
     if (declaration.nodeModel != NodeModel::Fixed)
     {
         writer.Key("node_model");
-        writer.Int(static_cast<int>(declaration.nodeModel));
+        writer.String(decljson::wireName(declaration.nodeModel));
     }
-    if (declaration.authoring)
-        writeAuthoring(writer, *declaration.authoring);
     if (declaration.training)
     {
         writer.Key("training");
         writer.StartObject();
-        writer.Key("kind");
-        writer.Int(static_cast<int>(declaration.training->kind));
-        writer.Key("asset_param");
-        writer.Uint(declaration.training->assetParam);
-        if (!declaration.training->helper.empty())
-        {
-            writer.Key("helper");
-            writer.String(declaration.training->helper.c_str(),
-                          static_cast<rapidjson::SizeType>(declaration.training->helper.size()));
-        }
+
         writer.Key("image");
         writeReference(writer, declaration.training->image);
         writer.Key("records");
@@ -1124,7 +991,7 @@ std::string writeToolDeclaration(const ToolDeclaration &declaration)
         if (!declaration.training->call.tool.empty())
         {
             writer.Key("call");
-            writeAuthoringCall(writer, declaration.training->call);
+            writeToolCall(writer, declaration.training->call);
         }
         if (!declaration.training->parameters.empty())
         {
@@ -1166,7 +1033,7 @@ std::string writeToolDeclaration(const ToolDeclaration &declaration)
                     if (parameter.editor != EditorKind::Default)
                     {
                         writer.Key("editor");
-                        writer.Int(static_cast<int>(parameter.editor));
+                        writer.String(decljson::wireName(parameter.editor));
                     }
                     if (parameter.step)
                         writeDefault(writer, "step", *parameter.step, parameter.type);
@@ -1210,54 +1077,7 @@ std::string writeToolDeclaration(const ToolDeclaration &declaration)
         }
         writer.EndObject();
     }
-    if (declaration.interaction)
-    {
-        const auto &interaction = *declaration.interaction;
-        writer.Key("interaction");
-        writer.StartObject();
-        writer.Key("helper");
-        writer.String(interaction.helperNameEn.c_str(),
-                      static_cast<rapidjson::SizeType>(interaction.helperNameEn.size()));
-        if (!interaction.inputs.empty())
-        {
-            writer.Key("inputs");
-            writer.StartArray();
-            for (const auto &[helper, target] : interaction.inputs)
-            {
-                writer.StartObject();
-                writer.Key("helper_port_id");
-                writer.Uint(helper);
-                writer.Key("source");
-                writeReference(writer, target);
-                writer.EndObject();
-            }
-            writer.EndArray();
-        }
-        if (!interaction.proposals.empty())
-        {
-            writer.Key("proposals");
-            writer.StartArray();
-            for (const auto &[helper, target] : interaction.proposals)
-            {
-                writer.StartObject();
-                writer.Key("helper_port_id");
-                writer.Uint(helper);
-                writer.Key("target");
-                writeReference(writer, target);
-                writer.EndObject();
-            }
-            writer.EndArray();
-        }
-        if (!interaction.roiKinds.empty())
-        {
-            writer.Key("roi_kinds");
-            writer.StartArray();
-            for (const auto kind : interaction.roiKinds)
-                writer.Int(static_cast<int>(kind));
-            writer.EndArray();
-        }
-        writer.EndObject();
-    }
+
     writer.EndObject();
     return std::string(buffer.GetString(), buffer.GetSize()) + "\n";
 }

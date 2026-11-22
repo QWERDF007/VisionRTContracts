@@ -69,14 +69,6 @@ struct PortDefinition
 };
 
 // Helper port number -> the tool port it feeds (inputs) or proposes into (proposals).
-struct InteractionMapping
-{
-    std::string               helperNameEn;
-    std::map<PortId, PortRef> inputs;
-    std::map<PortId, PortRef> proposals;
-    std::vector<RoiKind>      roiKinds;
-    bool                      operator==(const InteractionMapping &) const = default;
-};
 
 // One typed field a training record carries. `id` is the number the trainer receives and the
 // record is keyed by it; `nameZh` is presentation only, so renaming a field never moves its value.
@@ -163,70 +155,48 @@ struct TrainingRecordsSpec
     bool operator==(const TrainingRecordsSpec &) const = default;
 };
 
-// One helper output written to one workbench target. The list is complete: a click writes exactly
-// these targets or nothing.
-struct AuthoringWrite
+// One trainer output mapped to an existing business parameter.
+struct OutputMapping
 {
     PortId  sourcePort = 0;
     PortRef target;
-    bool    operator==(const AuthoringWrite &) const = default;
+    bool    operator==(const OutputMapping &) const = default;
 };
 
-// Facts only the workbench holds at the moment of a gesture. A helper input either takes one of
-// them or the value of a node port the declaration names; a constant belongs to the helper's own
-// declared default, so the business declaration never restates it.
-enum class ContextRole
+// The current typed training draft supplied as an ordinary call input.
+struct TrainingSetSource
 {
-    Cursor        = 0,
-    Phase         = 1,
-    Append        = 2,
-    TrainingImage = 3,
-    TrainingSet   = 4
+    bool operator==(const TrainingSetSource &) const = default;
 };
 
 // A typed constant a call passes to the helper. The declaration states the type the helper port
 // requires, so the value survives a round trip and the host can verify it against the real port
 // before the call instead of guessing from the JSON token.
-struct AuthoringLiteral
+struct TypedLiteral
 {
     TypeSpec  type;
     PortValue value = Missing{};
 
-    // Literals are scalars: the declaration states one constant, not a picture or a region. Equality
-    // therefore compares the number, text or flag the declaration spells.
-    bool operator==(const AuthoringLiteral &other) const
+    bool operator==(const TypedLiteral &other) const
     {
-        if (type != other.type || value.index() != other.value.index())
-            return false;
-        if (const auto *number = std::get_if<std::int64_t>(&value))
-            return *number == std::get<std::int64_t>(other.value);
-        if (const auto *number = std::get_if<double>(&value))
-            return *number == std::get<double>(other.value);
-        if (const auto *flag = std::get_if<bool>(&value))
-            return *flag == std::get<bool>(other.value);
-        if (const auto *text = std::get_if<std::string>(&value))
-            return *text == std::get<std::string>(other.value);
-        return false;
+        return type == other.type && equalValues(value, other.value);
     }
 };
 
-// One helper input: the helper port it feeds and where the value comes from. A source port of type
-// Image is read as the frame the user is looking at, not as the port's stored literal. A training
-// call additionally names record field numbers, the current training parameter values and typed
-// literals the declaration states itself.
-struct AuthoringInput
+// One call input and its typed source: draft, node parameter, record field number or constant.
+struct ToolCallInput
 {
     PortId port = 0;
-    std::variant<ContextRole, PortRef, AuthoringLiteral, TrainingFieldRef, TrainingParameterRef> source;
-    bool operator==(const AuthoringInput &) const = default;
+    std::variant<TrainingSetSource, PortRef, TypedLiteral, TrainingFieldRef, TrainingParameterRef> source;
+    bool operator==(const ToolCallInput &) const = default;
 };
 
 // The helper a scope calls. Ports the call omits keep the helper's own declared default.
-struct AuthoringCall
+struct ToolCall
 {
     std::string                 tool;
-    std::vector<AuthoringInput> inputs;
-    bool operator==(const AuthoringCall &) const = default;
+    std::vector<ToolCallInput>  inputs;
+    bool                        operator==(const ToolCall &) const = default;
 };
 
 // What a tool can be trained on. The host owns the training draft; the declaration names the
@@ -235,21 +205,15 @@ struct AuthoringCall
 // block has no training UI at all.
 struct TrainingSpec
 {
-    TrainingKind kind       = TrainingKind::ColorSamples;
-    PortId       assetParam = 0;
-    // Assistant that turns one click on the picture into a record geometry, named by the same
-    // mechanism as a tool interaction helper. Empty means the session is edited by hand only.
-    std::string helper;
     // Port whose published frame is copied into the draft. `id` of 0 means the tool never adds a
     // frame, which is only valid when it also declares no record fields.
     PortRef            image;
     TrainingRecordsSpec records;
-    // The trainer applied to the draft. Empty means the tool keeps its pre-training data format
-    // and the host writes that format directly.
-    AuthoringCall                  call;
+    // The trainer applied to the draft before any business parameter or asset is published.
+    ToolCall                           call;
     std::vector<TrainingParameterSpec> parameters;
     // Trainer output -> workbench target, written in the same transaction that publishes the asset.
-    std::vector<AuthoringWrite>        writes;
+    std::vector<OutputMapping>         writes;
     std::vector<TrainingArtifactSpec>  artifacts;
     // Optional trainer output the training page draws over the reference picture: the geometry the
     // trainer actually measured. `0` means the trainer publishes nothing to look at, and the host
@@ -258,10 +222,8 @@ struct TrainingSpec
 
     bool operator==(const TrainingSpec &other) const
     {
-        if (kind != other.kind || assetParam != other.assetParam || helper != other.helper
-            || image != other.image || records != other.records || call != other.call
-            || writes != other.writes || artifacts != other.artifacts
-            || overlayOutput != other.overlayOutput
+        if (image != other.image || records != other.records || call != other.call || writes != other.writes
+            || artifacts != other.artifacts || overlayOutput != other.overlayOutput
             || parameters.size() != other.parameters.size())
             return false;
         for (std::size_t index = 0; index < parameters.size(); ++index)
@@ -269,27 +231,6 @@ struct TrainingSpec
                 return false;
         return true;
     }
-};
-
-// Point selection on the processing page. `image` is the picture the user points at, `preview` and
-// `valid` name the helper outputs the canvas and the click decision read, `message` is optional.
-struct EasyTouchSpec
-{
-    PortRef                     image;
-    AuthoringCall               call;
-    PortId                      previewOutput = 0;
-    PortId                      validOutput   = 0;
-    std::optional<PortId>       messageOutput;
-    std::vector<AuthoringWrite> writes;
-    bool operator==(const EasyTouchSpec &) const = default;
-};
-
-// The optional capability block. Omitting it is an ordinary tool: no point selection, no training.
-struct AuthoringSpec
-{
-    std::uint32_t                version = 1;
-    std::optional<EasyTouchSpec> easyTouch;
-    bool operator==(const AuthoringSpec &) const = default;
 };
 
 struct PythonEntry
@@ -314,9 +255,7 @@ struct ToolDeclaration
     std::string                       hostBinding;
     PythonEntry                       entry;
     std::vector<std::filesystem::path> resources;
-    std::optional<InteractionMapping> interaction;
     std::optional<TrainingSpec>       training;
-    std::optional<AuthoringSpec>      authoring;
     std::vector<PortDefinition>       initParams;
     std::vector<PortDefinition>       inputs;
     std::vector<PortDefinition>       outputs;

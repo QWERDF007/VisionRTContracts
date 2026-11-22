@@ -170,7 +170,7 @@ PortValue defaultValue(const TypeSpec &type)
     case Type::ROI:
         return DataRef<ROI>(ROI{});
     case Type::TrainingSet:
-        return DataRef<TrainingSet>(TrainingSet{});
+        return Missing{};
     }
     throw ContractError("未知端口类型");
 }

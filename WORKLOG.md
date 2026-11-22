@@ -21,6 +21,23 @@
 - ...
 -->
 
+### 2026-11-22 — 语义声明与训练调用契约
+
+**目标**
+- 提供独立可消费的 v2 工具声明，统一可读枚举和训练调用类型。
+
+**当前状态**
+- 已实现：DeclarationNames.def 作为 JSON 枚举名称源；标量类型直接写名称，数值身份及 int64 原文保持精度；移除工具侧手势与旧训练格式分派。
+- TrainingSet 是调用输入，无工程或声明字面量默认值；宿主按业务参数组织训练调用。两父仓源码已同步，提交后更新 gitlink。
+
+**验证证据**
+- 宿主完整测试中的其余 SDK 契约通过；`tools/build.cmd python build/run_verification_corrections.py` 中 test_declaration_contract、test_training_set_contract、test_isolated_installation 全部通过，含真实隔离安装编译、精确整数、负端口拒绝、语义枚举与旧版本拒绝。
+- VisionTools test_package 与 test_distribution 已通过真实宿主校验器。
+
+**下一步**
+- 提交本 SDK 后将两父仓 gitlink 对齐；宿主与工具的安装产物验收见各自任务账本。
+
+
 ### 2026-11-20 — 协议枚举单一来源与跨语言导出
 
 **目标**

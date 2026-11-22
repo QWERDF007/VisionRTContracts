@@ -99,8 +99,7 @@ try
     }
     require(rejected, "empty frame is rejected");
 
-    const auto empty = defaultValue(TypeSpec{Type::TrainingSet});
-    require(std::get<DataRef<TrainingSet>>(empty).get().images.empty(), "default training set is empty");
+    require(isMissing(defaultValue(TypeSpec{Type::TrainingSet})), "training sets have no literal default");
 
     std::cout << "training set keeps exact keys, shared images and its own pixels\n";
     return 0;

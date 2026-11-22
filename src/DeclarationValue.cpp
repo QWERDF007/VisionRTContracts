@@ -1,5 +1,6 @@
 #include "DeclarationValue.h"
 
+#include "DeclarationNames.h"
 #include "visionrt/contracts/Issue.h"
 
 #include <charconv>
@@ -309,27 +310,22 @@ std::int64_t integer(const Node &node, std::string_view what)
 
 TypeSpec decodeType(const Node &node)
 {
+    if (node.kind == Kind::String)
+    {
+        TypeSpec spec{enumeration<Type>(node, "type")};
+        validateTypeSpec(spec);
+        return spec;
+    }
     if (node.kind != Kind::Object)
-        throw ContractError("类型必须是对象");
+        throw ContractError("类型必须是名称或数组描述");
     for (const auto &[name, value] : node.members)
         if (name != "type" && name != "dtype" && name != "rank")
             throw ContractError("TypeSpec 包含未知字段：" + name);
     const auto *type = node.find("type");
-    if (type == nullptr)
-        throw ContractError("类型缺少 type");
-    const auto code = integer(*type, "type");
-    // TrainingSet is declaration-only: a trainer port names it, and no declaration carries a value.
-    if (code < 0 || code > static_cast<std::int64_t>(Type::TrainingSet))
-        throw ContractError("未知类型编码");
-    TypeSpec spec;
-    spec.type = static_cast<Type>(code);
-    if (const auto *dtype = node.find("dtype"))
-    {
-        const auto value = integer(*dtype, "dtype");
-        if (value < 0 || value > static_cast<std::int64_t>(DType::String))
-            throw ContractError("未知元素类型编码");
-        spec.dtype = static_cast<DType>(value);
-    }
+    const auto *dtype = node.find("dtype");
+    if (!type || enumeration<Type>(*type, "type") != Type::Array || !dtype)
+        throw ContractError("数组描述必须指定 array、dtype 和 rank");
+    TypeSpec spec{Type::Array, enumeration<DType>(*dtype, "dtype")};
     if (const auto *rank = node.find("rank"))
     {
         const auto value = integer(*rank, "rank");
@@ -344,13 +340,18 @@ TypeSpec decodeType(const Node &node)
 void encodeType(Writer &writer, const TypeSpec &type)
 {
     validateTypeSpec(type);
+    if (type.type != Type::Array)
+    {
+        writer.String(wireName(type.type));
+        return;
+    }
     writer.StartObject();
     writer.Key("type");
-    writer.Int(static_cast<int>(type.type));
+    writer.String(wireName(type.type));
     if (type.type == Type::Array)
     {
         writer.Key("dtype");
-        writer.Int(static_cast<int>(*type.dtype));
+        writer.String(wireName(*type.dtype));
         writer.Key("rank");
         writer.Int(type.rank);
     }
