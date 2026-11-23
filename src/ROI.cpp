@@ -8,12 +8,11 @@
 namespace visionrt {
 namespace {
 
-constexpr std::size_t kPointSize     = 3;
+constexpr std::size_t kPointHead     = 1;
 constexpr std::size_t kSegmentSize   = 5;
 constexpr std::size_t kRectangleSize = 6;
 constexpr std::size_t kCircleSize    = 4;
 constexpr std::size_t kPolygonHead   = 1;
-constexpr std::size_t kPointSetHead  = 1;
 
 void requireKind(RoiKind actual, RoiKind expected, const char *message)
 {
@@ -87,8 +86,8 @@ void validateRoi(std::span<const double> encoded)
     const double code = encoded[0];
     if (code == 0)
     {
-        if (encoded.size() != kPointSize)
-            throw ContractError("Point ROI requires 3 elements");
+        if (encoded.size() < 3 || encoded.size() % 2 != 1)
+            throw ContractError("Point ROI requires at least one coordinate pair");
     }
     else if (code == 1)
     {
@@ -114,37 +113,37 @@ void validateRoi(std::span<const double> encoded)
         if (encoded.size() < 7 || encoded.size() % 2 != 1)
             throw ContractError("Polygon ROI requires at least three coordinate pairs");
     }
-    else if (code == 5)
-    {
-        if (encoded.size() < 3 || encoded.size() % 2 != 1)
-            throw ContractError("Point-set ROI requires at least one coordinate pair");
-    }
     else
     {
-        throw ContractError("ROI type code must be an integer in [0,5]");
+        throw ContractError("ROI type code must be an integer in [0,4]");
     }
 }
 
 PointView::PointView(std::span<const double> encoded)
     : encoded_(encoded)
 {
-    if (encoded_.size() != kPointSize || static_cast<int>(encoded_[0]) != static_cast<int>(RoiKind::Point))
-        throw ContractError("Point ROI requires 3 elements");
+    if (encoded_.size() < kPointHead + 2 || encoded_.size() % 2 != 1
+        || static_cast<int>(encoded_[0]) != static_cast<int>(RoiKind::Point))
+        throw ContractError("Point ROI requires at least one coordinate pair");
 }
 
-double PointView::x() const noexcept
+std::size_t PointView::size() const noexcept
 {
-    return encoded_[1];
+    return pairCount(encoded_);
 }
 
-double PointView::y() const noexcept
+cv::Point2d PointView::point(std::size_t index) const
 {
-    return encoded_[2];
+    return pairAt(encoded_, index);
 }
 
-PointView::operator cv::Point2d() const
+std::vector<cv::Point2d> PointView::points() const
 {
-    return {x(), y()};
+    std::vector<cv::Point2d> result;
+    result.reserve(size());
+    for (std::size_t index = 0; index < size(); ++index)
+        result.push_back(point(index));
+    return result;
 }
 
 SegmentView::SegmentView(std::span<const double> encoded)
@@ -221,33 +220,6 @@ cv::Point2d CircleView::center() const
 double CircleView::radius() const noexcept
 {
     return encoded_[3];
-}
-
-PointSetView::PointSetView(std::span<const double> encoded)
-    : encoded_(encoded)
-{
-    if (encoded_.size() < kPointSetHead + 2 || encoded_.size() % 2 != 1
-        || static_cast<int>(encoded_[0]) != static_cast<int>(RoiKind::PointSet))
-        throw ContractError("Point-set ROI requires at least one coordinate pair");
-}
-
-std::size_t PointSetView::size() const noexcept
-{
-    return pairCount(encoded_);
-}
-
-cv::Point2d PointSetView::point(std::size_t index) const
-{
-    return pairAt(encoded_, index);
-}
-
-std::vector<cv::Point2d> PointSetView::points() const
-{
-    std::vector<cv::Point2d> result;
-    result.reserve(size());
-    for (std::size_t index = 0; index < size(); ++index)
-        result.push_back(point(index));
-    return result;
 }
 
 PolygonView::PolygonView(std::span<const double> encoded)
@@ -332,12 +304,6 @@ PolygonView RegionView::polygon() const
     return PolygonView(encoded_);
 }
 
-PointSetView RegionView::pointSet() const
-{
-    requireKind(kind_, RoiKind::PointSet, "Region is not a point set");
-    return PointSetView(encoded_);
-}
-
 std::span<const double> RegionView::encoded() const noexcept
 {
     return encoded_;
@@ -374,11 +340,11 @@ EncodedRegion makePolygon(std::span<const cv::Point2d> points)
     return makePairs(RoiKind::Polygon, points);
 }
 
-EncodedRegion makePointSet(std::span<const cv::Point2d> points)
+EncodedRegion makePoint(std::span<const cv::Point2d> points)
 {
     if (points.empty())
-        throw ContractError("Point-set ROI requires at least one coordinate pair");
-    return makePairs(RoiKind::PointSet, points);
+        throw ContractError("Point ROI requires at least one coordinate pair");
+    return makePairs(RoiKind::Point, points);
 }
 
 RegionEditor::RegionEditor(EncodedRegion &encoded)
@@ -396,10 +362,6 @@ void RegionEditor::translate(cv::Point2d delta)
 {
     switch (kind_)
     {
-    case RoiKind::Point:
-        encoded_[1] += delta.x;
-        encoded_[2] += delta.y;
-        break;
     case RoiKind::Segment:
         encoded_[1] += delta.x;
         encoded_[2] += delta.y;
@@ -415,7 +377,7 @@ void RegionEditor::translate(cv::Point2d delta)
         encoded_[2] += delta.y;
         break;
     case RoiKind::Polygon:
-    case RoiKind::PointSet:
+    case RoiKind::Point:
         for (std::size_t index = 0; index < pairCount(encoded_); ++index)
         {
             encoded_[1 + index * 2] += delta.x;
@@ -428,20 +390,13 @@ void RegionEditor::translate(cv::Point2d delta)
 void RegionEditor::moveTo(cv::Point2d value)
 {
     requireKind(kind_, RoiKind::Point, "Region is not a point");
-    encoded_[1] = value.x;
-    encoded_[2] = value.y;
+    translate({value.x - encoded_[1], value.y - encoded_[2]});
 }
 
 void RegionEditor::setVertex(std::size_t index, cv::Point2d value)
 {
     switch (kind_)
     {
-    case RoiKind::Point:
-        if (index != 0)
-            throw ContractError("Point ROI has one vertex");
-        encoded_[1] = value.x;
-        encoded_[2] = value.y;
-        break;
     case RoiKind::Segment:
         if (index > 1)
             throw ContractError("Segment ROI has two vertices");
@@ -449,7 +404,7 @@ void RegionEditor::setVertex(std::size_t index, cv::Point2d value)
         encoded_[2 + index * 2] = value.y;
         break;
     case RoiKind::Polygon:
-    case RoiKind::PointSet:
+    case RoiKind::Point:
         if (index >= pairCount(encoded_))
             throw ContractError("ROI vertex index is out of range");
         encoded_[1 + index * 2] = value.x;
@@ -500,11 +455,11 @@ void RegionEditor::setPolygon(std::span<const cv::Point2d> points)
     writePairs(encoded_, points);
 }
 
-void RegionEditor::setPointSet(std::span<const cv::Point2d> points)
+void RegionEditor::setPoint(std::span<const cv::Point2d> points)
 {
-    requireKind(kind_, RoiKind::PointSet, "Region is not a point set");
+    requireKind(kind_, RoiKind::Point, "Region is not point geometry");
     if (points.empty())
-        throw ContractError("Point-set ROI requires at least one coordinate pair");
+        throw ContractError("Point ROI requires at least one coordinate pair");
     writePairs(encoded_, points);
 }
 
@@ -575,9 +530,6 @@ std::array<cv::Point2d, 2> transformedRoiBounds(std::span<const double> encoded,
         for (const auto &corner : region.rectangle().corners())
             mapped.push_back(map(corner));
         break;
-    case RoiKind::Point:
-        mapped.push_back(map(region.point()));
-        break;
     case RoiKind::Segment:
     {
         const auto segment = region.segment();
@@ -586,9 +538,9 @@ std::array<cv::Point2d, 2> transformedRoiBounds(std::span<const double> encoded,
         break;
     }
     case RoiKind::Polygon:
-    case RoiKind::PointSet:
+    case RoiKind::Point:
     {
-        const auto points = region.kind() == RoiKind::Polygon ? region.polygon().points() : region.pointSet().points();
+        const auto points = region.kind() == RoiKind::Polygon ? region.polygon().points() : region.point().points();
         for (const auto &point : points)
             mapped.push_back(map(point));
         break;

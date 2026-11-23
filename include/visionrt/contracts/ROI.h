@@ -24,8 +24,7 @@ enum class RoiKind
     Segment   = 1,
     Rectangle = 2,
     Circle    = 3,
-    Polygon   = 4,
-    PointSet  = 5
+    Polygon   = 4
 };
 
 VT_EXPORT void validateRoi(std::span<const double> encoded);
@@ -48,9 +47,9 @@ public:
     PointView() = default;
     explicit PointView(std::span<const double> encoded);
 
-    double x() const noexcept;
-    double y() const noexcept;
-    operator cv::Point2d() const;
+    std::size_t              size() const noexcept;
+    cv::Point2d              point(std::size_t index) const;
+    std::vector<cv::Point2d> points() const;
 
 private:
     std::span<const double> encoded_;
@@ -101,20 +100,6 @@ private:
     std::span<const double> encoded_;
 };
 
-class PointSetView
-{
-public:
-    PointSetView() = default;
-    explicit PointSetView(std::span<const double> encoded);
-
-    std::size_t      size() const noexcept;
-    cv::Point2d      point(std::size_t index) const;
-    std::vector<cv::Point2d> points() const;
-
-private:
-    std::span<const double> encoded_;
-};
-
 // Polygon shares the point-list layout; the type keeps the meaning visible at call sites.
 class PolygonView
 {
@@ -148,7 +133,6 @@ public:
     RectangleView rectangle() const;
     CircleView    circle() const;
     PolygonView   polygon() const;
-    PointSetView  pointSet() const;
 
     std::span<const double> encoded() const noexcept;
 
@@ -157,13 +141,13 @@ private:
     RoiKind                 kind_ = RoiKind::Point;
 };
 
-// Constructors produce the existing encoding, so storage and wire format never change.
+// Constructors produce the canonical encodings for the five geometry kinds.
 VT_EXPORT EncodedRegion makePoint(double x, double y);
 VT_EXPORT EncodedRegion makeSegment(cv::Point2d start, cv::Point2d end);
 VT_EXPORT EncodedRegion makeRectangle(double left, double top, double width, double height, double angleDegrees = 0.0);
 VT_EXPORT EncodedRegion makeCircle(cv::Point2d center, double radius);
 VT_EXPORT EncodedRegion makePolygon(std::span<const cv::Point2d> points);
-VT_EXPORT EncodedRegion makePointSet(std::span<const cv::Point2d> points);
+VT_EXPORT EncodedRegion makePoint(std::span<const cv::Point2d> points);
 
 // Constrained editing: the kind is fixed at construction, so a rectangle can never be written with
 // circle values and no setter can change the encoded length. The wrapped vector is edited in place.
@@ -185,7 +169,7 @@ public:
     void setRectangle(double left, double top, double width, double height, double angleDegrees = 0.0);
     void setCircle(cv::Point2d center, double radius);
     void setPolygon(std::span<const cv::Point2d> points);
-    void setPointSet(std::span<const cv::Point2d> points);
+    void setPoint(std::span<const cv::Point2d> points);
 
 private:
     EncodedRegion &encoded_;

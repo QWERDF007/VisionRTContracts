@@ -21,6 +21,21 @@
 - ...
 -->
 
+### 2026-11-23 — 点几何契约统一
+
+**目标**
+- 用一个 Point 类型表达一个或多个坐标，移除 PointSet 分支。
+
+**当前状态**
+- 点编码、视图、构造、平移及顶点编辑统一，旧代码 5 拒绝；模块 ABI 提升到 12。宿主与工具仓的 Contracts 源码保持一致，尚未提交。
+
+**验证证据**
+- VisionRT 的 test_roi_view_contract、test_sdk_value_contract、test_declaration_contract 通过，见 F:/Projects/VisionRT/build/evidence/geometry-data-tests.xml；覆盖多点移动、增删坐标、类型一致及旧编码拒绝。
+- VisionTools 四个生产模块完成重建，27 工具包通过宿主校验器和安装消费者，见 F:/Projects/VisionTools/build/geometry-data-package.log。
+
+**下一步**
+- 提交共享 SDK 并同步两父仓 gitlink；几何 API 与测试入口见 docs/README.md。
+
 ### 2026-11-22 — 语义声明与训练调用契约
 
 **目标**

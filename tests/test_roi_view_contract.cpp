@@ -35,11 +35,12 @@ void rejects(Callable &&callable)
 
 int main()
 {
+    validateRoi(EncodedRegion{0, 1, 2, 3, 4});
     // Point
     const auto point = makePoint(3.5, -2.0);
     assert(point == (EncodedRegion{0, 3.5, -2.0}));
     const auto pointView = RegionView(point).point();
-    assert(near(pointView.x(), 3.5) && near(pointView.y(), -2.0));
+    assert(near(pointView.point(0).x, 3.5) && near(pointView.point(0).y, -2.0));
 
     // Segment
     const auto segment = makeSegment({1, 2}, {7, 9});
@@ -71,7 +72,7 @@ int main()
     const auto circleView = RegionView(circle).circle();
     assert(near(circleView.center().x, 5) && near(circleView.center().y, 6) && near(circleView.radius(), 2.5));
 
-    // Polygon and point set share the pair layout but keep distinct meanings.
+    // Polygon and point geometry share coordinate-pair storage.
     const std::vector<cv::Point2d> polygonPoints{{0, 0}, {4, 0}, {4, 3}};
     const auto                     polygon = makePolygon(polygonPoints);
     assert(polygon.size() == 7 && polygon[0] == 4);
@@ -79,18 +80,18 @@ int main()
     assert(polygonView.size() == 3 && near(polygonView.point(2).x, 4) && near(polygonView.point(2).y, 3));
     assert(polygonView.points().size() == 3);
 
-    const std::vector<cv::Point2d> setPoints{{1, 1}, {2, 2}};
-    const auto                     pointSet = makePointSet(setPoints);
-    assert(pointSet.size() == 5 && pointSet[0] == 5);
-    const auto pointSetView = RegionView(pointSet).pointSet();
-    assert(pointSetView.size() == 2 && near(pointSetView.point(1).y, 2));
+    const std::vector<cv::Point2d> coordinates{{1, 1}, {2, 2}};
+    const auto                     points = makePoint(coordinates);
+    assert(points.size() == 5 && points[0] == 0);
+    const auto pointsView = RegionView(points).point();
+    assert(pointsView.size() == 2 && near(pointsView.point(1).y, 2));
 
     // Kind is answered from one validation, and a mismatched accessor refuses instead of decoding
     // the wrong fields.
     assert(RegionView(rectangle).kind() == RoiKind::Rectangle);
     assert(RegionView::trusted(rectangle, RoiKind::Rectangle).kind() == RoiKind::Rectangle);
     rejects([&] { (void)RegionView(rectangle).circle(); });
-    rejects([&] { (void)RegionView(point).pointSet(); });
+    rejects([&] { (void)RegionView(rectangle).point(); });
 
     // Validation still refuses malformed encodings at the entry.
     rejects([&] { (void)RegionView(EncodedRegion{}); });
@@ -98,10 +99,11 @@ int main()
     rejects([&] { (void)RegionView(EncodedRegion{3, 0, 0, -1}); });
     rejects([&] { (void)RegionView(EncodedRegion{4, 0, 0, 1, 1}); });
     rejects([&] { (void)RegionView(EncodedRegion{9, 0, 0}); });
+    rejects([&] { (void)RegionView(EncodedRegion{5, 1, 2}); });
     rejects([&] { makeRectangle(0, 0, 0, 1); });
     rejects([&] { makeCircle({0, 0}, 0); });
     rejects([&] { makePolygon(std::vector<cv::Point2d>{{0, 0}, {1, 1}}); });
-    rejects([&] { makePointSet(std::vector<cv::Point2d>{}); });
+    rejects([&] { makePoint(std::vector<cv::Point2d>{}); });
 
     // Constrained editing: the kind is fixed, lengths stay valid and the storage is edited in place.
     auto movable = makePoint(1, 2);
@@ -120,13 +122,16 @@ int main()
     }
     assert(editable == (EncodedRegion{2, 5, 6, 7, 8, 45}));
 
-    auto editableSet = makePointSet(std::vector<cv::Point2d>{{1, 1}});
+    auto editablePoints = makePoint(std::vector<cv::Point2d>{{1, 1}});
     {
-        RegionEditor editor(editableSet);
+        RegionEditor editor(editablePoints);
         const std::vector<cv::Point2d> grown{{3, 3}, {4, 4}, {5, 5}};
-        editor.setPointSet(grown);
+        editor.setPoint(grown);
     }
-    assert(editableSet.size() == 7 && RegionView(editableSet).pointSet().size() == 3);
+    assert(editablePoints.size() == 7 && RegionView(editablePoints).point().size() == 3);
+    RegionEditor(editablePoints).moveTo({10, 20});
+    assert(editablePoints == (EncodedRegion{0, 10, 20, 11, 21, 12, 22}));
+    assert(RegionView(editablePoints).kind() == RegionView(point).kind());
 
     // Translation moves exactly the coordinate slots; a rectangle stays a left/top rectangle and a
     // circle keeps its centre meaning instead of being reinterpreted as a corner.
@@ -147,13 +152,13 @@ int main()
     // Vertex editing is only offered where a vertex exists; rectangle and circle handles are
     // constrained setters instead.
     const std::vector<cv::Point2d> vertexPoints{{1, 1}, {2, 2}};
-    auto                          vertexSet = makePointSet(vertexPoints);
+    auto                          editableVertices = makePoint(vertexPoints);
     {
-        RegionEditor editor(vertexSet);
+        RegionEditor editor(editableVertices);
         editor.setVertex(1, {9, 8});
         rejects([&] { editor.setVertex(2, {0, 0}); });
     }
-    assert(vertexSet == (EncodedRegion{5, 1, 1, 9, 8}));
+    assert(editableVertices == (EncodedRegion{0, 1, 1, 9, 8}));
     auto vertexSegment = makeSegment({0, 0}, {1, 1});
     RegionEditor(vertexSegment).setVertex(0, {-2, -3});
     assert(vertexSegment == (EncodedRegion{1, -2, -3, 1, 1}));
@@ -172,9 +177,9 @@ int main()
     const auto shiftedCircle = transformedRoiBounds(circle, translate);
     assert(near(shiftedCircle[0].x, 12.5) && near(shiftedCircle[0].y, 23.5));
     assert(near(shiftedCircle[1].x, 17.5) && near(shiftedCircle[1].y, 28.5));
-    const auto shiftedPointSet = transformedRoiBounds(pointSet, translate);
-    assert(near(shiftedPointSet[0].x, 11) && near(shiftedPointSet[1].y, 22));
+    const auto shiftedPoints = transformedRoiBounds(points, translate);
+    assert(near(shiftedPoints[0].x, 11) && near(shiftedPoints[1].y, 22));
 
-    std::cout << "ROI semantic views: six kinds round-trip, rectangle keeps left/top, editing is kind-safe\n";
+    std::cout << "ROI semantic views: five kinds round-trip, rectangle keeps left/top, editing is kind-safe\n";
     return 0;
 }
