@@ -85,12 +85,11 @@ try
     const auto &derived = declaration.outputs[1];
     require(derived.typeFrom && derived.typeFrom->nodeParameter == PortRef{PortStage::Init, 1}, "type_from");
 
-    const auto written   = writeToolDeclaration(declaration);
-    const auto restored  = readToolDeclaration(written, "回写.json");
+    const auto written  = writeToolDeclaration(declaration);
+    const auto restored = readToolDeclaration(written, "回写.json");
     require(restored.nameZh == declaration.nameZh && restored.inputs.size() == declaration.inputs.size(), "reopen");
     require(std::get<std::int64_t>(restored.inputs[0].defaultValue) == 9007199254740993LL, "exact int64 after rewrite");
-    require(restored.outputs[1].typeFrom
-                && restored.outputs[1].typeFrom->flowParameter == PortRef{PortStage::Init, 0},
+    require(restored.outputs[1].typeFrom && restored.outputs[1].typeFrom->flowParameter == PortRef{PortStage::Init, 0},
             "type_from after rewrite");
     require(writeToolDeclaration(restored) == written, "rewrite is stable");
 
@@ -101,7 +100,7 @@ try
     {
         const auto &elements = std::get<Array>(arrayTool.inputs[0].defaultValue).elements<std::int64_t>();
         require(elements[0] == 9007199254740993LL && elements[1] == 9007199254740995LL, "exact int64 elements");
-        const auto reopened = readToolDeclaration(writeToolDeclaration(arrayTool), "数组.json");
+        const auto  reopened = readToolDeclaration(writeToolDeclaration(arrayTool), "数组.json");
         const auto &again    = std::get<Array>(reopened.inputs[0].defaultValue).elements<std::int64_t>();
         require(again[0] == 9007199254740993LL && again[1] == 9007199254740995LL, "exact int64 elements after rewrite");
     }
@@ -168,6 +167,18 @@ try
                 R"({"schema_version":1,"name_en":"old","name_zh":"旧声明","version":"1","implementation":{"kind":0}})");
         },
         "schema_version");
+    const auto sharedRegions = readToolDeclaration(
+        R"({"schema_version":2,"name_en":"align","name_zh":"对齐","version":"1","implementation":{"kind":"cpp"},"inputs":[{"id":1,"name_zh":"图像","type":"image"},{"id":6,"name_zh":"搜索区域","type":"roi","relations":{"image":{"stage":"inputs","id":1}}}],"training":{"writes":[{"source_port":2,"target":{"stage":"inputs","id":6}}],"image":{"stage":"inputs","id":1},"region_input":6,"records":{"max":1,"fields":[]},"call":{"tool":"trainer","inputs":[{"port":2,"source":{"stage":"inputs","id":6}}]}}})");
+    require(readToolDeclaration(writeToolDeclaration(sharedRegions)).training->regionInput == 6,
+            "training canvas references the existing business input through a round trip");
+    rejects(
+        [&]
+        {
+            auto invalid                  = sharedRegions;
+            invalid.training->regionInput = 99;
+            readToolDeclaration(writeToolDeclaration(invalid));
+        },
+        "region_input");
     auto trainer = readToolDeclaration(
         R"({"schema_version":2,"name_en":"trainer","name_zh":"训练器","version":"1","implementation":{"kind":"cpp"},"inputs":[{"id":1,"name_zh":"训练集","type":"training_set"}]})");
     trainer.inputs[0].defaultValue = defaultValue(trainer.inputs[0].type);

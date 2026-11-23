@@ -78,7 +78,8 @@ Enum optionalEnumeration(const Node *node, Enum fallback, std::string_view where
 // on one machine and is rejected at the reading edge, not repaired into a relative one.
 std::filesystem::path relativePath(const std::string &text, std::string_view where)
 {
-    const auto path = std::filesystem::path(std::u8string_view(reinterpret_cast<const char8_t *>(text.data()), text.size()));
+    const auto path
+        = std::filesystem::path(std::u8string_view(reinterpret_cast<const char8_t *>(text.data()), text.size()));
     if (path.empty() || path.is_absolute() || path.has_root_name() || path.has_root_directory())
         throw ContractError(std::string(where) + " 必须是相对路径");
     return path.lexically_normal();
@@ -122,9 +123,8 @@ std::optional<PortValue> optionalValue(const Node &owner, std::string_view name,
 
 // Constraints and editor spelling are shared by value ports and training parameters: both name a
 // typed value with the same limits and the same control. Only the port adds tab, group and provider.
-void readConstraints(const Node &item, const TypeSpec &type, std::string_view where,
-                     std::optional<PortValue> &minimum, std::optional<PortValue> &maximum,
-                     std::vector<PortValue> &options)
+void readConstraints(const Node &item, const TypeSpec &type, std::string_view where, std::optional<PortValue> &minimum,
+                     std::optional<PortValue> &maximum, std::vector<PortValue> &options)
 {
     const auto *constraints = item.find("constraints");
     if (constraints == nullptr)
@@ -157,24 +157,25 @@ std::vector<PortDefinition> ports(const Node &root, PortStage stage)
 {
     // The declaration spells the initialisation list "init_params"; diagnostics keep the shorter
     // stage name, so the two spellings live side by side by design.
-    const auto direction = stage == PortStage::Init    ? std::string("init_params")
-                           : stage == PortStage::Inputs ? std::string("inputs")
-                                                        : std::string("outputs");
-    const auto *items   = root.find(direction);
+    const auto  direction = stage == PortStage::Init   ? std::string("init_params")
+                          : stage == PortStage::Inputs ? std::string("inputs")
+                                                       : std::string("outputs");
+    const auto *items     = root.find(direction);
     if (items == nullptr)
         return {};
     if (items->kind != Kind::Array)
         throw ContractError(direction + " 必须是数组");
-    const bool output = stage == PortStage::Outputs;
+    const bool                  output = stage == PortStage::Outputs;
     std::vector<PortDefinition> result;
     result.reserve(items->items.size());
     for (std::size_t index = 0; index < items->items.size(); ++index)
     {
-        const auto where = direction + "[" + std::to_string(index) + "]";
-        const auto &item = object(items->items[index], where);
-        fields(item, {"id", "name_zh", "name_en", "type", "type_from", "default", "constraints", "ui", "relations",
-                      "display"},
-               where);
+        const auto  where = direction + "[" + std::to_string(index) + "]";
+        const auto &item  = object(items->items[index], where);
+        fields(
+            item,
+            {"id", "name_zh", "name_en", "type", "type_from", "default", "constraints", "ui", "relations", "display"},
+            where);
         PortDefinition port;
         port.id     = portId(member(item, "id", where), context(where, "id"));
         port.nameZh = text(item, "name_zh", where);
@@ -187,10 +188,10 @@ std::vector<PortDefinition> ports(const Node &root, PortStage stage)
                     throw ContractError(where + " 的 type_from 不能同时声明 " + name);
             const auto &block = object(*typeFrom, where + ".type_from");
             fields(block, {"flow", "node", "port"}, where + ".type_from");
-            port.typeFrom = PortTypeReference{
-                reference(member(block, "flow", where + ".type_from"), where + ".type_from.flow"),
-                reference(member(block, "node", where + ".type_from"), where + ".type_from.node"),
-                reference(member(block, "port", where + ".type_from"), where + ".type_from.port")};
+            port.typeFrom
+                = PortTypeReference{reference(member(block, "flow", where + ".type_from"), where + ".type_from.flow"),
+                                    reference(member(block, "node", where + ".type_from"), where + ".type_from.node"),
+                                    reference(member(block, "port", where + ".type_from"), where + ".type_from.port")};
         }
         else
         {
@@ -263,7 +264,7 @@ void readImplementation(const Node &root, ToolDeclaration &declaration)
     const auto &implementation = object(member(root, "implementation", "工具声明"), "implementation");
     fields(implementation, {"kind", "binding", "package", "file", "symbol", "resources"}, "implementation");
     const auto kind    = enumeration<ToolKind>(member(implementation, "kind", "implementation"), "implementation.kind");
-    declaration.kind = kind;
+    declaration.kind   = kind;
     const auto allowed = [kind](std::string_view name)
     {
         switch (kind)
@@ -290,9 +291,10 @@ void readImplementation(const Node &root, ToolDeclaration &declaration)
         break;
     case ToolKind::PythonFunction:
     case ToolKind::PythonClass:
-        declaration.entry.package = relativePath(text(implementation, "package", "implementation"), "implementation.package");
-        declaration.entry.file    = relativePath(text(implementation, "file", "implementation"), "implementation.file");
-        declaration.entry.symbol  = text(implementation, "symbol", "implementation");
+        declaration.entry.package
+            = relativePath(text(implementation, "package", "implementation"), "implementation.package");
+        declaration.entry.file   = relativePath(text(implementation, "file", "implementation"), "implementation.file");
+        declaration.entry.symbol = text(implementation, "symbol", "implementation");
         break;
     }
     if (const auto *resources = implementation.find("resources"))
@@ -356,8 +358,8 @@ void readTrainingRecords(const Node &node, TrainingRecordsSpec &records)
         records.maxCount = static_cast<int>(value);
     }
     const auto *list = block.find("fields");
-    if (list == nullptr || list->kind != Kind::Array || list->items.empty())
-        throw ContractError("training.records.fields 必须是非空数组");
+    if (list == nullptr || list->kind != Kind::Array)
+        throw ContractError("training.records.fields 必须是数组");
     for (std::size_t index = 0; index < list->items.size(); ++index)
     {
         const auto where = std::string("training.records.fields[") + std::to_string(index) + "]";
@@ -375,8 +377,8 @@ void readTrainingRecords(const Node &node, TrainingRecordsSpec &records)
 
 std::vector<OutputMapping> readWrites(const Node &item, std::string_view where)
 {
-    std::vector<OutputMapping>  result;
-    const auto                 *writes = item.find("writes");
+    std::vector<OutputMapping> result;
+    const auto                *writes = item.find("writes");
     if (writes == nullptr)
         return result;
     if (writes->kind != Kind::Array)
@@ -404,7 +406,7 @@ TrainingParameterSpec readTrainingParameter(const Node &node, std::string_view w
     const auto &item = object(node, where);
     fields(item, {"id", "name_zh", "type", "default", "constraints", "ui"}, where);
     TrainingParameterSpec parameter;
-    parameter.id     = portId(member(item, "id", where), context(where, "id"));
+    parameter.id = portId(member(item, "id", where), context(where, "id"));
     if (parameter.id == 0)
         throw ContractError(context(where, "id") + " 必须大于 0");
     parameter.nameZh = text(item, "name_zh", where, false);
@@ -461,11 +463,20 @@ ToolCall readToolCall(const Node &node, std::string_view where);
 void readTraining(const Node &node, ToolDeclaration &declaration)
 {
     const auto &item = object(node, "training");
-    fields(item, {"image", "records", "call", "parameters", "writes", "artifacts", "overlay_output"}, "training");
+    fields(item, {"image", "records", "call", "parameters", "writes", "artifacts", "overlay_output", "region_input"},
+           "training");
     TrainingSpec spec;
+    if (const auto *region = item.find("region_input"))
+    {
+        spec.regionInput = portId(*region, "training.region_input");
+        if (spec.regionInput == 0)
+            throw ContractError("training.region_input 必须大于 0");
+    }
     if (const auto *image = item.find("image"))
         spec.image = reference(*image, "training.image");
     readTrainingRecords(member(item, "records", "training"), spec.records);
+    if (spec.records.fields.empty() && spec.regionInput == 0)
+        throw ContractError("training.records.fields 为空时必须声明 region_input");
     if (const auto *call = item.find("call"))
         spec.call = readToolCall(*call, "training.call");
     if (const auto *parameters = item.find("parameters"))
@@ -474,7 +485,7 @@ void readTraining(const Node &node, ToolDeclaration &declaration)
             throw ContractError("training.parameters 必须是数组");
         for (std::size_t index = 0; index < parameters->items.size(); ++index)
         {
-            const auto where = std::string("training.parameters[") + std::to_string(index) + "]";
+            const auto where     = std::string("training.parameters[") + std::to_string(index) + "]";
             auto       parameter = readTrainingParameter(parameters->items[index], where);
             if (std::any_of(spec.parameters.begin(), spec.parameters.end(),
                             [&](const TrainingParameterSpec &existing) { return existing.id == parameter.id; }))
@@ -497,7 +508,7 @@ void readTraining(const Node &node, ToolDeclaration &declaration)
             throw ContractError("training.artifacts 必须是数组");
         for (std::size_t index = 0; index < artifacts->items.size(); ++index)
         {
-            const auto where = std::string("training.artifacts[") + std::to_string(index) + "]";
+            const auto where    = std::string("training.artifacts[") + std::to_string(index) + "]";
             auto       artifact = readTrainingArtifact(artifacts->items[index], where);
             if (std::any_of(spec.artifacts.begin(), spec.artifacts.end(),
                             [&](const TrainingArtifactSpec &existing) { return existing.id == artifact.id; }))
@@ -515,7 +526,7 @@ ToolCall readToolCall(const Node &node, std::string_view where)
     const auto &item = object(node, where);
     fields(item, {"tool", "inputs"}, where);
     ToolCall call;
-    call.tool = text(item, "tool", where, false);
+    call.tool          = text(item, "tool", where, false);
     const auto *inputs = item.find("inputs");
     if (inputs == nullptr)
         return call;
@@ -555,7 +566,7 @@ ToolCall readToolCall(const Node &node, std::string_view where)
             if (value.type.type != Type::Int && value.type.type != Type::Float && value.type.type != Type::Bool
                 && value.type.type != Type::String)
                 throw ContractError(context(entryWhere, "literal") + " 只支持标量常量");
-            value.value = decljson::decodeValue(member(block, "value", entryWhere), value.type);
+            value.value  = decljson::decodeValue(member(block, "value", entryWhere), value.type);
             input.source = std::move(value);
         }
         else if (const auto *field = entry.find("field_id"))
@@ -665,8 +676,8 @@ void writeDefault(decljson::Writer &writer, const char *name, const PortValue &v
 void writePorts(decljson::Writer &writer, std::string_view direction, const std::vector<PortDefinition> &ports,
                 PortStage stage)
 {
-    const auto authored = std::count_if(ports.begin(), ports.end(),
-                                        [stage](const PortDefinition &port) { return !isReservedPort(stage, port.id); });
+    const auto authored = std::count_if(
+        ports.begin(), ports.end(), [stage](const PortDefinition &port) { return !isReservedPort(stage, port.id); });
     if (authored == 0)
         return;
     writer.Key(std::string(direction).c_str(), static_cast<rapidjson::SizeType>(direction.size()));
@@ -716,16 +727,14 @@ void writePorts(decljson::Writer &writer, std::string_view direction, const std:
             {
                 writer.Key("options");
                 writer.StartArray();
-                for (const auto &option : port.options)
-                    decljson::encodeValue(writer, option, port.type);
+                for (const auto &option : port.options) decljson::encodeValue(writer, option, port.type);
                 writer.EndArray();
             }
             writer.EndObject();
         }
         const bool hasUi = port.editor != EditorKind::Default
-                           || (stage != PortStage::Outputs && port.tab != ParameterTab::BasicInput)
-                           || !port.group.empty() || port.optionsProvider != OptionsProvider::None || port.step
-                           || port.decimals;
+                        || (stage != PortStage::Outputs && port.tab != ParameterTab::BasicInput) || !port.group.empty()
+                        || port.optionsProvider != OptionsProvider::None || port.step || port.decimals;
         if (hasUi)
         {
             writer.Key("ui");
@@ -839,13 +848,23 @@ ToolDeclaration readToolDeclaration(std::string_view json, std::string_view sour
         declaration.outputs    = ports(root, PortStage::Outputs);
         if (declaration.training)
         {
-            const auto &spec = *declaration.training;
+            const auto &spec  = *declaration.training;
             const auto  input = std::find_if(declaration.inputs.begin(), declaration.inputs.end(),
-                                            [&](const PortDefinition &port) { return port.id == spec.image.id; });
+                                             [&](const PortDefinition &port) { return port.id == spec.image.id; });
             if (spec.image.stage != PortStage::Inputs || input == declaration.inputs.end())
                 throw ContractError("training.image 必须引用一个输入端口");
             if (input->type.type != Type::Image)
                 throw ContractError("training.image 必须引用 Image 输入：" + input->nameZh);
+            if (spec.regionInput != 0)
+            {
+                const auto region
+                    = std::find_if(declaration.inputs.begin(), declaration.inputs.end(),
+                                   [&](const PortDefinition &port) { return port.id == spec.regionInput; });
+                if (region == declaration.inputs.end() || region->type.type != Type::ROI || region->image != spec.image
+                    || spec.records.roiField() != 0)
+                    throw ContractError("training.region_input 必须唯一引用 training.image 上的 ROI 输入："
+                                        + std::to_string(spec.regionInput));
+            }
         }
         return declaration;
     }
@@ -872,7 +891,7 @@ ToolDeclaration readToolDeclarationFile(const std::filesystem::path &path)
 std::string writeToolDeclaration(const ToolDeclaration &declaration)
 {
     rapidjson::StringBuffer buffer;
-    decljson::Writer         writer(buffer);
+    decljson::Writer        writer(buffer);
     writer.StartObject();
     writer.Key("schema_version");
     writer.Int(2);
@@ -1049,6 +1068,11 @@ std::string writeToolDeclaration(const ToolDeclaration &declaration)
             writer.EndArray();
         }
         writeWrites(writer, "writes", declaration.training->writes);
+        if (declaration.training->regionInput != 0)
+        {
+            writer.Key("region_input");
+            writer.Uint(declaration.training->regionInput);
+        }
         if (declaration.training->overlayOutput != 0)
         {
             writer.Key("overlay_output");

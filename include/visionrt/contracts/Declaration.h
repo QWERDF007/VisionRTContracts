@@ -23,8 +23,8 @@ namespace visionrt {
 // A port reference is a stage plus a number: the same number may exist once per direction.
 struct PortRef
 {
-    PortStage stage = PortStage::Inputs;
-    PortId    id    = 0;
+    PortStage stage                             = PortStage::Inputs;
+    PortId    id                                = 0;
     bool      operator==(const PortRef &) const = default;
 };
 
@@ -42,26 +42,26 @@ struct PortTypeReference
 // migration diffs — nothing looks a port up by it.
 struct PortDefinition
 {
-    PortId      id = 0;
-    std::string nameZh;
-    TypeSpec    type;
+    PortId                           id = 0;
+    std::string                      nameZh;
+    TypeSpec                         type;
     // The declaration's explicit default, or the type's empty value materialised during
     // normalisation. A host-owned status port and a type_from output keep it Missing.
-    PortValue   defaultValue = Missing{};
-    std::string nameEn;
-    EditorKind  editor         = EditorKind::Default;
-    ParameterTab tab           = ParameterTab::BasicInput;
-    std::string group;
-    std::optional<PortValue> step;
-    std::optional<int>       decimals;
-    OptionsProvider          optionsProvider = OptionsProvider::None;
-    std::optional<PortValue> minimum;
-    std::optional<PortValue> maximum;
-    std::vector<PortValue>   options;
-    std::optional<PortRef>   image;
-    std::optional<PortRef>   alignment;
-    std::optional<PortRef>   sameGeometryAs;
-    ColorOrder               colorOrder = ColorOrder::Automatic;
+    PortValue                        defaultValue = Missing{};
+    std::string                      nameEn;
+    EditorKind                       editor = EditorKind::Default;
+    ParameterTab                     tab    = ParameterTab::BasicInput;
+    std::string                      group;
+    std::optional<PortValue>         step;
+    std::optional<int>               decimals;
+    OptionsProvider                  optionsProvider = OptionsProvider::None;
+    std::optional<PortValue>         minimum;
+    std::optional<PortValue>         maximum;
+    std::vector<PortValue>           options;
+    std::optional<PortRef>           image;
+    std::optional<PortRef>           alignment;
+    std::optional<PortRef>           sameGeometryAs;
+    ColorOrder                       colorOrder = ColorOrder::Automatic;
     // Author's explicit choice to offer this Image port in the workbench image selector. Absent in
     // the declaration means false: an image port never joins the selector without being named.
     bool                             imageVisible = false;
@@ -79,9 +79,9 @@ struct TrainingFieldSpec
     PortId      id = 0;
     std::string nameZh;
     TypeSpec    type;
-    bool        roi        = false;
-    int         minRegions = 0;
-    int         maxRegions = 0;
+    bool        roi                                         = false;
+    int         minRegions                                  = 0;
+    int         maxRegions                                  = 0;
     bool        operator==(const TrainingFieldSpec &) const = default;
 };
 
@@ -100,12 +100,13 @@ struct TrainingParameterSpec
     std::optional<PortValue> minimum;
     std::optional<PortValue> maximum;
     std::vector<PortValue>   options;
+
     // The declared default is a value, and a value has no equality of its own: what makes a
     // declaration the same is its identity, type and control, not the constant it starts from.
     bool sameShape(const TrainingParameterSpec &other) const
     {
         return id == other.id && nameZh == other.nameZh && type == other.type && editor == other.editor
-               && decimals == other.decimals;
+            && decimals == other.decimals;
     }
 };
 
@@ -125,14 +126,14 @@ struct TrainingArtifactSpec
 // which fields to read without the host guessing one by its type.
 struct TrainingFieldRef
 {
-    PortId id = 0;
+    PortId id                                         = 0;
     bool   operator==(const TrainingFieldRef &) const = default;
 };
 
 // A call input that hands the trainer the current value of a declared training parameter.
 struct TrainingParameterRef
 {
-    PortId id = 0;
+    PortId id                                             = 0;
     bool   operator==(const TrainingParameterRef &) const = default;
 };
 
@@ -152,6 +153,7 @@ struct TrainingRecordsSpec
                 return field.id;
         return 0;
     }
+
     bool operator==(const TrainingRecordsSpec &) const = default;
 };
 
@@ -186,7 +188,7 @@ struct TypedLiteral
 // One call input and its typed source: draft, node parameter, record field number or constant.
 struct ToolCallInput
 {
-    PortId port = 0;
+    PortId                                                                                         port = 0;
     std::variant<TrainingSetSource, PortRef, TypedLiteral, TrainingFieldRef, TrainingParameterRef> source;
     bool operator==(const ToolCallInput &) const = default;
 };
@@ -194,9 +196,9 @@ struct ToolCallInput
 // The helper a scope calls. Ports the call omits keep the helper's own declared default.
 struct ToolCall
 {
-    std::string                 tool;
-    std::vector<ToolCallInput>  inputs;
-    bool                        operator==(const ToolCall &) const = default;
+    std::string                tool;
+    std::vector<ToolCallInput> inputs;
+    bool                       operator==(const ToolCall &) const = default;
 };
 
 // What a tool can be trained on. The host owns the training draft; the declaration names the
@@ -207,8 +209,8 @@ struct TrainingSpec
 {
     // Port whose published frame is copied into the draft. `id` of 0 means the tool never adds a
     // frame, which is only valid when it also declares no record fields.
-    PortRef            image;
-    TrainingRecordsSpec records;
+    PortRef                            image;
+    TrainingRecordsSpec                records;
     // The trainer applied to the draft before any business parameter or asset is published.
     ToolCall                           call;
     std::vector<TrainingParameterSpec> parameters;
@@ -218,12 +220,13 @@ struct TrainingSpec
     // Optional trainer output the training page draws over the reference picture: the geometry the
     // trainer actually measured. `0` means the trainer publishes nothing to look at, and the host
     // then draws nothing — it never derives an endpoint from the model itself.
-    PortId overlayOutput = 0;
+    PortId                             overlayOutput = 0;
+    PortId                             regionInput   = 0;
 
     bool operator==(const TrainingSpec &other) const
     {
         if (image != other.image || records != other.records || call != other.call || writes != other.writes
-            || artifacts != other.artifacts || overlayOutput != other.overlayOutput
+            || artifacts != other.artifacts || overlayOutput != other.overlayOutput || regionInput != other.regionInput
             || parameters.size() != other.parameters.size())
             return false;
         for (std::size_t index = 0; index < parameters.size(); ++index)
@@ -246,19 +249,19 @@ struct PythonEntry
 // a packaging validator or a tool author holds the declaration alone.
 struct ToolDeclaration
 {
-    std::string                       nameEn;
-    std::string                       nameZh;
-    std::string                       version    = "1.0.0";
-    ToolKind                          kind       = ToolKind::Cpp;
-    NodeModel                         nodeModel  = NodeModel::Fixed;
-    ToolVisibility                    visibility = ToolVisibility::Normal;
-    std::string                       hostBinding;
-    PythonEntry                       entry;
+    std::string                        nameEn;
+    std::string                        nameZh;
+    std::string                        version    = "1.0.0";
+    ToolKind                           kind       = ToolKind::Cpp;
+    NodeModel                          nodeModel  = NodeModel::Fixed;
+    ToolVisibility                     visibility = ToolVisibility::Normal;
+    std::string                        hostBinding;
+    PythonEntry                        entry;
     std::vector<std::filesystem::path> resources;
-    std::optional<TrainingSpec>       training;
-    std::vector<PortDefinition>       initParams;
-    std::vector<PortDefinition>       inputs;
-    std::vector<PortDefinition>       outputs;
+    std::optional<TrainingSpec>        training;
+    std::vector<PortDefinition>        initParams;
+    std::vector<PortDefinition>        inputs;
+    std::vector<PortDefinition>        outputs;
 
     bool derivesPorts() const noexcept
     {

@@ -3,6 +3,7 @@
 - [构建与安装消费](../README.md)、[CMake 导出](../CMakeLists.txt)、[安装配置](../cmake/VisionRTContractsConfig.cmake.in)
 - [协议枚举源定义](../include/visionrt/contracts/ProtocolEnums.h)、[QML / Python 枚举导出](../tools/export_enums.py)
 - [工具声明与训练调用](../include/visionrt/contracts/Declaration.h)、[独立 JSON 读写](../include/visionrt/contracts/DeclarationJson.h)、[声明枚举名称](../include/visionrt/contracts/DeclarationNames.def)
+- [训练画布引用与声明校验](../src/DeclarationJson.cpp)、[声明往返与错误引用验证](../tests/test_declaration_contract.cpp)
 - [原图与类型化训练记录](../include/visionrt/contracts/TrainingSet.h)
 - [值与结构校验](../include/visionrt/contracts/Value.h)、[实现](../src/Value.cpp)
 - [端口类型与数组类型结构](../include/visionrt/contracts/TypeSpec.h)、[数组的平坦存储与可读嵌套构造](../include/visionrt/contracts/Array.h)、[ROI 几何](../include/visionrt/contracts/ROI.h)

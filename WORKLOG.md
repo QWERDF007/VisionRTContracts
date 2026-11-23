@@ -21,6 +21,21 @@
 - ...
 -->
 
+### 2026-11-23 — 训练画布引用业务区域
+
+**目标**
+- 训练画布使用已声明的 ROI 输入，避免记录字段和业务输入重复保存搜索区域。
+
+**当前状态**
+- TrainingSpec.regionInput 与 JSON region_input 支持往返，允许仅含参考图的训练记录；引用必须指向训练图上的 ROI 输入，并与记录画布字段互斥。
+- 声明、编码和测试同步到 VisionTools 的 Contracts 检出；宿主和工具端验证证据统一从 VisionRT 任务账本索引。
+
+**验证证据**
+- test_declaration_contract 通过新声明往返；不存在的区域输入测试先失败，补充校验后通过。宿主 build/roi-boundary-red.log 记录构建，工具调用记录包含该次 SDK 通过结果。
+
+**下一步**
+- 后续交付同步两父仓的 SDK 引用；入口见 docs/README.md。
+
 ### 2026-11-23 — 点几何契约统一
 
 **目标**
