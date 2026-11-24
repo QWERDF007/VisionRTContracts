@@ -2,7 +2,6 @@
 
 // Author helper for stateless tools. A function is adapted to the existing IToolInstance
 // interface, so scheduling, cancellation, readback, teardown and ownership keep one code path.
-// The public ABI (ToolFactoryDescriptor, IToolRegistry, ModuleApi) is unchanged.
 #include "visionrt/contracts/Registry.h"
 
 #include <exception>
@@ -48,8 +47,9 @@ template<auto Function>
 class FunctionToolInstance final : public IToolInstance
 {
 public:
-    ToolStatus initialize(const Values &initParams) override
+    ToolStatus initialize(const ToolConfiguration &configuration) override
     {
+    const auto &initParams = configuration.parameters;
         // Configuration belongs to the call's inputs. Accepting init parameters here would hide a
         // declaration/author mismatch instead of reporting it.
         return initParams.empty() ? ToolStatus{} : ToolStatus{kContractViolationStatus, "函数工具不接受初始化参数"};

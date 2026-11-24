@@ -39,7 +39,7 @@ ToolResult failLoudly(const Values &)
 
 struct Counter final : IToolInstance
 {
-    ToolStatus initialize(const Values &) override
+    ToolStatus initialize(const ToolConfiguration &configuration) override
     {
         return {};
     }
@@ -106,6 +106,10 @@ int main()
 try
 {
     TestRegistry registry;
+    Counter untrained;
+    const auto unsupported = untrained.train(TrainingSet{}, {});
+    assert(std::get<std::int64_t>(unsupported.outputs.at(kStatusCodePort)) != 0);
+    assert(std::get<std::string>(unsupported.outputs.at(kStatusMessagePort)) == "不支持训练");
     assert(registerFunction<&addOne>(registry, "test.function.add_one").code == 0);
     assert(registerFunction<&failLoudly>(registry, "test.function.fail").code == 0);
     assert(registerClass<Counter>(registry, "test.class.counter").code == 0);

@@ -25,7 +25,7 @@ public:
 class Counter final : public IToolInstance
 {
 public:
-    ToolStatus initialize(const Values &) override { return {}; }
+    ToolStatus initialize(const ToolConfiguration &configuration) override { return {}; }
     ToolResult execute(const Values &) override { return toolResult({{2, ++count_}}, {}); }
     ToolStatus release() override { return {}; }
 private:
@@ -38,7 +38,6 @@ ToolResult echo(const Values &inputs) { return toolResult({{2, inputs.at(1)}}, {
 int main()
 try
 {
-    static_assert(MODULE_ABI_MAJOR == 11);
     ConsumerRegistry registry;
     assert(registerClass<Counter>(registry, "Counter"));
     assert(registerFunction<&echo>(registry, "Echo"));

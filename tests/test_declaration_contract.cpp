@@ -70,6 +70,20 @@ const char *kOrdinaryTool = R"({
 int main()
 try
 {
+    const auto trainable = readToolDeclaration(R"({
+      "schema_version":2,"name_en":"trainable","name_zh":"训练工具","version":"1.0.0",
+      "implementation":{"kind":"cpp"},
+      "train_params":[
+        {"id":1,"name_zh":"模型路径","type":"string","scope":"tool","ui":{"editor":"path"}},
+        {"id":2,"name_zh":"颜色名称","type":"string","scope":"record"}
+      ],
+      "outputs":[{"id":2,"name_zh":"模型路径","type":"string","produced_by":"train"}]
+    })");
+    const auto trainableJson = writeToolDeclaration(trainable);
+    require(trainableJson.find("train_params") != std::string::npos
+                && trainableJson.find("record") != std::string::npos
+                && trainableJson.find("produced_by") != std::string::npos,
+            "training parameters and output phases survive a declaration round trip");
     const auto declaration = readToolDeclaration(kOrdinaryTool, "普通工具.json");
     require(declaration.nameEn == "test.ordinary" && declaration.nameZh == "普通工具", "identity");
     require(declaration.visibility == ToolVisibility::Internal, "visibility code");
@@ -167,18 +181,6 @@ try
                 R"({"schema_version":1,"name_en":"old","name_zh":"旧声明","version":"1","implementation":{"kind":0}})");
         },
         "schema_version");
-    const auto sharedRegions = readToolDeclaration(
-        R"({"schema_version":2,"name_en":"align","name_zh":"对齐","version":"1","implementation":{"kind":"cpp"},"inputs":[{"id":1,"name_zh":"图像","type":"image"},{"id":6,"name_zh":"搜索区域","type":"roi","relations":{"image":{"stage":"inputs","id":1}}}],"training":{"writes":[{"source_port":2,"target":{"stage":"inputs","id":6}}],"image":{"stage":"inputs","id":1},"region_input":6,"records":{"max":1,"fields":[]},"call":{"tool":"trainer","inputs":[{"port":2,"source":{"stage":"inputs","id":6}}]}}})");
-    require(readToolDeclaration(writeToolDeclaration(sharedRegions)).training->regionInput == 6,
-            "training canvas references the existing business input through a round trip");
-    rejects(
-        [&]
-        {
-            auto invalid                  = sharedRegions;
-            invalid.training->regionInput = 99;
-            readToolDeclaration(writeToolDeclaration(invalid));
-        },
-        "region_input");
     auto trainer = readToolDeclaration(
         R"({"schema_version":2,"name_en":"trainer","name_zh":"训练器","version":"1","implementation":{"kind":"cpp"},"inputs":[{"id":1,"name_zh":"训练集","type":"training_set"}]})");
     trainer.inputs[0].defaultValue = defaultValue(trainer.inputs[0].type);

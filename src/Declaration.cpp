@@ -6,6 +6,8 @@ const char *stageName(PortStage stage) noexcept
 {
     switch (stage)
     {
+    case PortStage::Train:
+        return "train_params";
     case PortStage::Init:
         return "init";
     case PortStage::Inputs:

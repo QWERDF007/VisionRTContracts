@@ -5,6 +5,9 @@
 #include "visionrt/contracts/Value.h"
 
 #include <cstdint>
+#include <filesystem>
+#include <utility>
+#include <vector>
 #include <map>
 #include <string>
 #include <string_view>
@@ -57,21 +60,39 @@ VT_EXPORT ToolStatus executionSuccess(std::string message = "运行成功");
 
 // The single execution result. `outputs` holds the declared business ports plus __status_code and
 // __status_message; `detail` carries technical detail for diagnostics/logs and stays separate.
+struct ModelArtifact {
+    std::vector<std::uint8_t> bytes;
+};
+
+struct ToolConfiguration {
+    Values parameters;
+    std::map<std::string, std::filesystem::path> models;
+
+    ToolConfiguration(Values values = {}, std::map<std::string, std::filesystem::path> references = {})
+        : parameters(std::move(values)), models(std::move(references)) {}
+    ToolConfiguration(std::initializer_list<Values::value_type> values) : parameters(values) {}
+};
+
 struct ToolResult {
     Values      outputs;
     std::string detail;
+    std::map<std::string, ModelArtifact> artifacts;
 };
 
 VT_EXPORT ToolResult toolResult(Values outputs, ToolStatus status = {});
 
-// A tool receives only its declared values. A string that names a file is resolved by the tool that
-// reads or writes it, against the directory of the running product executable; the host neither
-// rewrites it nor hands the tool any directory, project, or service object.
+// Ordinary file inputs are resolved by the tool against the product directory. Model references
+// arrive separately as resolved paths in ToolConfiguration. Training produces transient model
+// bytes; the host saves them before committing the model reference.
 class IToolInstance {
 public:
     virtual ~IToolInstance() = default;
-    virtual ToolStatus initialize(const Values& initParams) = 0;
+    virtual ToolStatus initialize(const ToolConfiguration& configuration) = 0;
     virtual ToolResult execute(const Values& inputs) = 0;
+    virtual ToolResult train(const TrainingSet&, const Values&)
+    {
+        return toolResult({}, {1, "不支持训练"});
+    }
     virtual ToolStatus release() = 0;
 };
 

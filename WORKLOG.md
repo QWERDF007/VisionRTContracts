@@ -21,6 +21,39 @@
 - ...
 -->
 
+### 2026-11-23 — 共享契约提交
+
+**目标**
+- 提交业务实例训练契约，供宿主与工具仓固定同一个 SDK 版本。
+
+**当前状态**
+- ABI 13、统一训练参数及模型产物改动已纳入本次提交；忽略 Python 生成缓存。
+- 两份检出的 55 个受控文件按统一换行逐一比较无差异，rapidjson 引用相同且工作树干净。
+
+**验证证据**
+- 宿主 build/default-build-tests.log 的 19 项回归全部通过，包含 SDK 隔离安装和真实工具消费；工具仓两项契约通过，见宿主 build/training-tools-final-tests.log。
+- 具体实现与验证入口见 docs/README.md；本次只整理提交和缓存忽略，复用上述运行证据。
+
+**下一步**
+- 将同一个 SDK 提交同步到两个父仓并更新 gitlink；提交身份以 Git 历史为准。
+
+### 2026-11-23 — 业务实例训练与统一参数
+
+**目标**
+- 交付可选 train、ToolConfiguration、统一训练参数作用域与阶段输出声明，工具 JSON schema_version 保持 2。
+
+**当前状态**
+- 实例初始化分离普通参数与已解析模型引用，训练复用 ToolResult 并携带临时模型字节；默认实现返回不支持训练。模块 ABI 为 13。
+- 训练字段与参数统一使用 PortDefinition；删除旧训练器调用映射和重复字段类型。声明、名称、读写及安装消费夹具已同步。
+- 宿主和工具仓中的两份 SDK 工作树按相同文件内容交付，未提交或推送。
+
+**验证证据**
+- 宿主 build/training 的 test_declaration_contract、tool_registration_test 通过；相关真实算法、工作台与工程存储等十三项定向验证全部通过，见宿主 build/training-final-tests.log。
+- `tools/build.cmd ctest --test-dir build/training -C Release -R ^test_isolated_installation$ --output-on-failure` 通过，独立安装后的可执行文件和共享库完成真实消费，见宿主 build/training-sdk-install-test.log。
+
+**下一步**
+- 验证入口见 docs/README.md；提交时先提交共享 SDK，再同步两个父仓引用。
+
 ### 2026-11-23 — 训练画布引用业务区域
 
 **目标**
