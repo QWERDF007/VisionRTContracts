@@ -21,6 +21,24 @@
 - ...
 -->
 
+### 2026-11-24 — 原生枚举导出与构建身份查询
+
+**目标**
+- 为两仓提供不执行 Python 的枚举生成和 Git 工作区查询，维持协议类型和 ABI。
+
+**当前状态**
+- 公共枚举用定义表展开，标准库原生生成器导出 QML 和 Python；支持各消费仓的领域目录、Python 名称和错误消息。删除旧 export_enums.py，ABI 仍为 13，公开枚举名称、底层类型和数值不变。
+- CMake/Git 查询统一构建与打包的工作区判定；SDK 原生测试注册不再查找或执行解释器，Python 安装测试直接由 CTest 启动指定路径。
+- 两份检出内容一致，已纳入本次提交，提交身份以 Git 历史为准，尚未推送。实现与测试入口见 docs/README.md。
+
+**验证证据**
+- 原生生成器契约先失败后通过；增量构建测试验证中文输出路径、定义变更重建及无变化不重写，见宿主 build/native-enum-incremental.log、native-final-tests.log。
+- SDK 隔离安装、Python 与原生真实消费通过；宿主 12 项、工具仓 8 项定向回归全部通过，见两仓 build/native-final-tests.log。
+- 元数据 13 项及六个嵌套 Git/CMake 构建通过，覆盖缺失解释器、Unicode、重命名、脏状态和查询失败；见宿主 build/native-metadata-tests.log、native-final-tests.log。两仓无解释器构建证据见宿主 build/native-no-python 和工具仓 build/native-no-python-build.log。
+
+**下一步**
+- 两个父仓固定同一 SDK 提交；实现及验证入口见 docs/README.md。
+
 ### 2026-11-23 — 共享契约提交
 
 **目标**

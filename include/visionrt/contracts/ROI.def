@@ -1,0 +1,7 @@
+VRT_ENUM_BEGIN(RoiKind, int)
+VRT_ENUM_VALUE(Point, 0)
+VRT_ENUM_VALUE(Segment, 1)
+VRT_ENUM_VALUE(Rectangle, 2)
+VRT_ENUM_VALUE(Circle, 3)
+VRT_ENUM_VALUE(Polygon, 4)
+VRT_ENUM_END(RoiKind)

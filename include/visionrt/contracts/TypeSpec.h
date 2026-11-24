@@ -12,29 +12,8 @@
 
 namespace visionrt {
 
-enum class Type
-{
-    Int,
-    Float,
-    Bool,
-    String,
-    Image,
-    Array,
-    ROI,
-    // One training call's input table. Never a port of a running pipeline: a trainer declares it,
-    // the workbench passes it once, and nothing serialises it.
-    TrainingSet
-};
-enum class DType
-{
-    UInt8,
-    Int32,
-    Int64,
-    Float32,
-    Float64,
-    Bool,
-    String
-};
+#define VRT_ENUM_FILE "TypeSpec.def"
+#include <visionrt/contracts/EnumDeclarations.h>
 
 inline constexpr int kMaxArrayRank = 4;
 

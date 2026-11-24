@@ -1,7 +1,7 @@
 # 契约文档索引
 
 - [构建与安装消费](../README.md)、[CMake 导出](../CMakeLists.txt)、[安装配置](../cmake/VisionRTContractsConfig.cmake.in)
-- [协议枚举源定义](../include/visionrt/contracts/ProtocolEnums.h)、[QML / Python 枚举导出](../tools/export_enums.py)
+- [协议枚举源定义](../include/visionrt/contracts/ProtocolEnums.def)、[原生 QML / Python 导出](../tools/EnumExport.cpp)、[定义表展开](../include/visionrt/contracts/EnumDeclarations.h)、[生成验证](../tests/enum_export/contract.cpp)
 - [工具与训练参数声明](../include/visionrt/contracts/Declaration.h)、[独立 JSON 读写](../include/visionrt/contracts/DeclarationJson.h)、[声明枚举名称](../include/visionrt/contracts/DeclarationNames.def)
 - [训练作用域与输出阶段校验](../src/DeclarationJson.cpp)、[声明往返验证](../tests/test_declaration_contract.cpp)
 - [原图与类型化训练记录](../include/visionrt/contracts/TrainingSet.h)

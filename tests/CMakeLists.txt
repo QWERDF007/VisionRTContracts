@@ -1,4 +1,12 @@
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
+set(VISIONRT_TEST_PYTHON_EXECUTABLE "$ENV{VISIONRT_TEST_PYTHON_EXECUTABLE}" CACHE FILEPATH "Interpreter used only when running Python tests")
+set(_contracts_test_python "${VISIONRT_TEST_PYTHON_EXECUTABLE}")
+if(NOT _contracts_test_python)
+    if(WIN32)
+        set(_contracts_test_python python)
+    else()
+        set(_contracts_test_python python3)
+    endif()
+endif()
 find_package(Threads REQUIRED)
 
 set(_contract_tests "")
@@ -27,13 +35,17 @@ if(WIN32 AND OpenCV_SHARED)
 endif()
 
 add_test(NAME test_isolated_installation
-    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_isolated_installation.py"
+    COMMAND "${_contracts_test_python}" "${CMAKE_CURRENT_SOURCE_DIR}/test_isolated_installation.py"
         --build-dir "${CMAKE_BINARY_DIR}" --config "$<CONFIG>"
         --opencv-dir "${OpenCV_DIR}" --opencv-bin "${_opencv_bin_dir}"
         --make-program "${CMAKE_MAKE_PROGRAM}" --cxx-compiler "${CMAKE_CXX_COMPILER}"
         --generator "${CMAKE_GENERATOR}" --generator-platform "${CMAKE_GENERATOR_PLATFORM}")
 
-list(APPEND _contract_tests test_isolated_installation)
+include("${CMAKE_CURRENT_SOURCE_DIR}/../tools/EnumExport.cmake")
+visionrt_add_enum_exporter(test_enum_export_contract enum_export/contract.cpp)
+set_target_properties(test_enum_export_contract PROPERTIES EXCLUDE_FROM_ALL TRUE)
+add_test(NAME test_enum_export_contract COMMAND test_enum_export_contract "${CMAKE_CURRENT_BINARY_DIR}/enum-export-output")
+list(APPEND _contract_tests test_isolated_installation test_enum_export_contract)
 
 # The suite names its own group and publishes the member list, so a consumer can build it as one
 # group (`tests-sdk` in VisionRT) and refuse the empty filter instead of reporting a false green.

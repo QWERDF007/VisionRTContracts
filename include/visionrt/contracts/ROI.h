@@ -18,14 +18,8 @@ using RegionGroup   = std::vector<EncodedRegion>;
 // The encoded layout every region uses: a leading kind code followed by coordinates. Rectangle and
 // circle fields keep their original meaning - a rectangle stores its unrotated left/top corner with
 // width, height and angle, never a centre.
-enum class RoiKind
-{
-    Point     = 0,
-    Segment   = 1,
-    Rectangle = 2,
-    Circle    = 3,
-    Polygon   = 4
-};
+#define VRT_ENUM_FILE "ROI.def"
+#include <visionrt/contracts/EnumDeclarations.h>
 
 VT_EXPORT void validateRoi(std::span<const double> encoded);
 

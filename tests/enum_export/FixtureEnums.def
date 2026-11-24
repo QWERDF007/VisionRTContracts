@@ -1,0 +1,7 @@
+VRT_ENUM_BEGIN(State, int)
+VRT_ENUM_VALUE(None, 0)
+VRT_ENUM_VALUE(Ready, 7)
+VRT_ENUM_END(State)
+VRT_ENUM_BEGIN(CommonToolError, std::int64_t, "CommonError", "COMMON_MESSAGES")
+VRT_ENUM_VALUE(InputMissing, 1001, "INPUT_MISSING", "输入\"缺失\"\n请检查")
+VRT_ENUM_END(CommonToolError)
