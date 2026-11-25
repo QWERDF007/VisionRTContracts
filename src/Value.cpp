@@ -125,8 +125,11 @@ bool equalValues(const PortValue& left, const PortValue& right) {
                 for (const auto &[id, image] : first.images)
                 {
                     const auto found = second.images.find(id);
-                    if (found == second.images.end() || image.colorOrder != found->second.colorOrder
-                        || !equalValues(DataRef<Image>(Image{image.pixels}), DataRef<Image>(Image{found->second.pixels}))) return false;
+                    if (found == second.images.end() || image.colorOrder != found->second.colorOrder) return false;
+                    if (image.pixels.empty() != found->second.pixels.empty()) return false;
+                    if (!image.pixels.empty()
+                        && !equalValues(DataRef<Image>(Image{image.pixels}), DataRef<Image>(Image{found->second.pixels})))
+                        return false;
                 }
                 for (const auto &[id, record] : first.records)
                 {

@@ -1,14 +1,18 @@
 cmake_minimum_required(VERSION 3.25)
-project(VisionRTContracts VERSION 0.1.0 LANGUAGES CXX)
+project(VisionRTContracts VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-if(NOT TARGET opencv_core)
-    find_package(OpenCV REQUIRED COMPONENTS core)
+if(NOT TARGET opencv_core OR NOT TARGET opencv_imgcodecs)
+    find_package(OpenCV REQUIRED COMPONENTS core imgcodecs)
 endif()
+
+set(_visionrt_miniz_gen "${CMAKE_CURRENT_BINARY_DIR}/miniz_gen")
+file(MAKE_DIRECTORY "${_visionrt_miniz_gen}")
+file(WRITE "${_visionrt_miniz_gen}/miniz_export.h" "#pragma once\n#ifndef MINIZ_EXPORT\n#define MINIZ_EXPORT\n#endif\n")
 
 add_library(VisionRTContracts STATIC
     src/Tool.cpp
@@ -20,10 +24,16 @@ add_library(VisionRTContracts STATIC
     src/Value.cpp
     src/ValueJson.cpp
     src/TrainingSet.cpp
+    src/ZipArchive.cpp
+    src/TrainingArchive.cpp
     src/Declaration.cpp
     src/JsonDocument.cpp
     src/DeclarationValue.cpp
-    src/DeclarationJson.cpp)
+    src/DeclarationJson.cpp
+    3rdparty/miniz/miniz.c
+    3rdparty/miniz/miniz_tdef.c
+    3rdparty/miniz/miniz_tinfl.c
+    3rdparty/miniz/miniz_zip.c)
 add_library(VisionRT::Contracts ALIAS VisionRTContracts)
 set_target_properties(VisionRTContracts PROPERTIES
     EXPORT_NAME Contracts
@@ -37,14 +47,23 @@ target_include_directories(VisionRTContracts PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
     ${OpenCV_INCLUDE_DIRS})
-# The declaration reader's JSON backend is private: it is compiled into the static library and never
-# reaches an installed header, so a consumer still builds with the SDK headers alone.
+# The declaration reader's JSON backend and miniz ZIP backend are private: compiled into the static
+# library and never reaching an installed header, so consumers build with the SDK headers alone.
 target_include_directories(VisionRTContracts PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/rapidjson/include)
-target_link_libraries(VisionRTContracts PUBLIC opencv_core)
+    ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/rapidjson/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/miniz
+    ${_visionrt_miniz_gen})
+target_compile_definitions(VisionRTContracts PRIVATE MINIZ_NO_STDIO)
+target_link_libraries(VisionRTContracts PUBLIC opencv_core PRIVATE opencv_imgcodecs)
 if(MSVC)
     target_compile_options(VisionRTContracts PUBLIC /utf-8)
+    set_source_files_properties(
+        3rdparty/miniz/miniz.c
+        3rdparty/miniz/miniz_tdef.c
+        3rdparty/miniz/miniz_tinfl.c
+        3rdparty/miniz/miniz_zip.c
+        PROPERTIES COMPILE_OPTIONS "/W0")
 endif()
 
 set(VISIONRT_CONTRACTS_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include" CACHE PATH "VisionRT Contracts include directory")

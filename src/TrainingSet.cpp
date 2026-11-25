@@ -19,6 +19,8 @@ void validateTrainingSet(const TrainingSet &set)
 {
     for (const auto &[id, image] : set.images)
     {
+        if (image.pixels.empty())
+            continue;
         try
         {
             validateImageFrame(image.pixels);
@@ -35,6 +37,22 @@ void validateTrainingSet(const TrainingSet &set)
                                 + std::to_string(*record.imageId));
         for (const auto &[field, value] : record.fields)
             if (const auto type = typeOf(value)) validateValue(*type, value);
+    }
+}
+
+void validateTrainingSetPixels(const TrainingSet &set)
+{
+    validateTrainingSet(set);
+    for (const auto &[id, image] : set.images)
+    {
+        try
+        {
+            validateImageFrame(image.pixels);
+        }
+        catch (const ContractError &error)
+        {
+            throw ContractError("训练图像 " + std::to_string(id) + "：" + error.what());
+        }
     }
 }
 

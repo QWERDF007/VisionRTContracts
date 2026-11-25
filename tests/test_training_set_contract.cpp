@@ -63,7 +63,7 @@ TrainingSet twoRecordsOneImage()
 int main()
 try
 {
-    static_assert(MODULE_ABI_MAJOR == 15);
+    static_assert(MODULE_ABI_MAJOR == 16);
 
     TrainingSet numeric;
     TrainingRecord record;
@@ -114,19 +114,20 @@ try
     }
     require(rejected, "missing image is rejected by number");
 
-    // An empty matrix is not a frame.
+    // Persisted metadata-only frames pass validateTrainingSet, while validateTrainingSetPixels rejects empty frames.
     TrainingSet emptyFrame;
     emptyFrame.images.emplace(1, trainingFrame(1, cv::Mat{}, ColorOrder::BGR));
+    validateTrainingSet(emptyFrame);
     rejected = false;
     try
     {
-        validateTrainingSet(emptyFrame);
+        validateTrainingSetPixels(emptyFrame);
     }
     catch (const ContractError &)
     {
         rejected = true;
     }
-    require(rejected, "empty frame is rejected");
+    require(rejected, "empty frame is rejected by validateTrainingSetPixels");
 
     require(std::get<DataRef<TrainingSet>>(defaultValue(TypeSpec{Type::TrainingSet})).get().records.empty(), "training set default is an empty typed value");
 

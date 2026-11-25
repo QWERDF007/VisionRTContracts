@@ -52,8 +52,13 @@ struct TrainingSet
 // batch afterwards cannot change what the trainer reads.
 VT_EXPORT TrainingImage trainingFrame(TrainingImageId id, const cv::Mat &frame, ColorOrder colorOrder);
 
-// Every image is a nonempty two-dimensional matrix and every record names an image that exists.
-// A set that fails here never reaches a trainer.
+// Validates structure, color metadata, record references and field types. Persisted metadata-only
+// images may carry empty pixels until hydrated from the tool's training archive; non-empty pixels
+// must still satisfy validateImageFrame.
 VT_EXPORT void validateTrainingSet(const TrainingSet &set);
+
+// Strict execution-time check: every image referenced in the training set must carry non-empty,
+// valid pixels before reaching a trainer.
+VT_EXPORT void validateTrainingSetPixels(const TrainingSet &set);
 
 } // namespace visionrt

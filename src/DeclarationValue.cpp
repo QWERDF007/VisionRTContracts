@@ -64,36 +64,17 @@ std::uint32_t identifier(const Node &node)
     return static_cast<std::uint32_t>(value);
 }
 
-cv::Mat readPixels(const Node &node)
-{
-    try
-    {
-        cv::FileStorage storage(string(node, "图像"), cv::FileStorage::READ | cv::FileStorage::MEMORY);
-        cv::Mat pixels;
-        storage["pixels"] >> pixels;
-        if (pixels.empty()) throw ContractError("图像像素为空");
-        return pixels;
-    }
-    catch (const cv::Exception &error) { throw ContractError("图像存储格式不正确：" + std::string(error.what())); }
-}
-
-void writePixels(Writer &writer, const cv::Mat &pixels)
-{
-    cv::FileStorage storage(".json", cv::FileStorage::WRITE | cv::FileStorage::MEMORY
-                                    | cv::FileStorage::FORMAT_JSON | cv::FileStorage::BASE64);
-    storage << "pixels" << pixels;
-    const auto json = storage.releaseAndGetString();
-    writer.String(json.c_str(), static_cast<rapidjson::SizeType>(json.size()));
-}
-
 TrainingSet readTrainingSet(const Node &node)
 {
     TrainingSet set;
     for (const auto &image : array(required(node, "images"), "训练图像"))
     {
-        const auto id = identifier(required(image, "id"));
+        for (const auto &[name, unused] : image.members)
+            if (name != "id" && name != "color_order")
+                throw ContractError("训练图像元数据包含未知字段：" + name);
+        const auto id    = identifier(required(image, "id"));
         const auto order = enumeration<ColorOrder>(required(image, "color_order"), "color_order");
-        if (!set.images.emplace(id, TrainingImage{id, readPixels(required(image, "pixels")), order}).second)
+        if (!set.images.emplace(id, TrainingImage{id, cv::Mat{}, order}).second)
             throw ContractError("训练图像编号重复");
     }
     for (const auto &record : array(required(node, "records"), "训练记录"))
@@ -127,7 +108,6 @@ void writeTrainingSet(Writer &writer, const TrainingSet &set)
         writer.StartObject();
         writer.Key("id"); writer.Uint(id);
         writer.Key("color_order"); writer.String(wireName(image.colorOrder));
-        writer.Key("pixels"); writePixels(writer, image.pixels);
         writer.EndObject();
     }
     writer.EndArray();
@@ -480,9 +460,10 @@ PortValue decodeValue(const Node &node, const TypeSpec &type)
         break;
     case Type::Image:
     {
-        Image images;
-        for (const auto &image : array(node, "图像批次")) images.push_back(readPixels(image));
-        result = DataRef<Image>(std::move(images));
+        const auto &items = array(node, "图像批次");
+        if (!items.empty())
+            throw ContractError("JSON 不支持内嵌图像像素数据，请使用外部文件或训练资源包");
+        result = DataRef<Image>(Image{});
         break;
     }
     case Type::TrainingSet:
@@ -550,8 +531,9 @@ void encodeValue(Writer &writer, const PortValue &value, const TypeSpec &type)
             }
             else if constexpr (std::is_same_v<Item, DataRef<Image>>)
             {
+                if (!item.get().empty())
+                    throw ContractError("JSON 不支持内嵌图像像素数据，请使用外部文件或训练资源包");
                 writer.StartArray();
-                for (const auto &image : item.get()) writePixels(writer, image);
                 writer.EndArray();
             }
             else

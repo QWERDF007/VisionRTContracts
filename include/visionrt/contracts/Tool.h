@@ -60,10 +60,6 @@ VT_EXPORT ToolStatus executionSuccess(std::string message = "运行成功");
 
 // The single execution result. `outputs` holds the declared business ports plus __status_code and
 // __status_message; `detail` carries technical detail for diagnostics/logs and stays separate.
-struct ModelArtifact {
-    std::vector<std::uint8_t> bytes;
-};
-
 struct ToolConfiguration {
     Values parameters;
     std::map<std::string, std::filesystem::path> models;
@@ -76,14 +72,13 @@ struct ToolConfiguration {
 struct ToolResult {
     Values      outputs;
     std::string detail;
-    std::map<std::string, ModelArtifact> artifacts;
 };
 
 VT_EXPORT ToolResult toolResult(Values outputs, ToolStatus status = {});
 
 // Ordinary file inputs are resolved by the tool against the product directory. Model references
-// arrive separately as resolved paths in ToolConfiguration. Training produces transient model
-// bytes; the host saves them before committing the model reference.
+// arrive as resolved paths in ToolConfiguration. Training tools write their own training archive
+// directly to disk and publish the path through outputs.
 class IToolInstance {
 public:
     virtual ~IToolInstance() = default;
