@@ -476,33 +476,13 @@ std::array<cv::Point2d, 4> rectangleCorners(std::span<const double> encoded)
     return view.rectangle().corners();
 }
 
-std::array<cv::Point2d, 2> transformedRoiBounds(std::span<const double> encoded, std::span<const double> matrix)
+std::array<cv::Point2d, 2> transformedRoiBounds(std::span<const double> encoded, const Affine2D &transform)
 {
-    if (matrix.size() != 9)
-        throw ContractError("ROI transform requires a 3x3 matrix");
-    // One non-finite entry would poison every comparison below and leave an arbitrary corner as the
-    // reported box, so the matrix itself is checked before any geometry runs.
-    for (const double value : matrix)
-        if (!std::isfinite(value))
-            throw ContractError("ROI transform matrix must be finite");
-
-    // Supported range: a finite invertible affine map - the same range the tools' alignment
-    // declares. A projective map sends part of a region to infinity, so a per-corner box reports a
-    // finite rectangle that does not contain the image. That capability needs its own
-    // specification (sign and zero-crossing analysis of the denominator), and approximating it here
-    // would be a guarantee the function cannot keep.
-    if (matrix[6] != 0.0 || matrix[7] != 0.0)
-        throw ContractError("ROI transform must be affine: projective maps are not supported");
-    // det([[a, b], [d, e]]) == 0 collapses the plane; a zero homogeneous scale has no finite image
-    // of any point. Both are refused before any geometry runs.
-    if (matrix[0] * matrix[4] - matrix[1] * matrix[3] == 0.0 || matrix[8] == 0.0)
-        throw ContractError("ROI transform is singular: the ROI has no image");
-
+    if (!transform.isAffine() || !transform.invertible()) throw ContractError("ROI transform must be finite and invertible");
+    const auto &matrix = transform.m;
     const auto map = [&](cv::Point2d point)
     {
-        const double      scale = matrix[8];
-        const cv::Point2d target{(matrix[0] * point.x + matrix[1] * point.y + matrix[2]) / scale,
-                                 (matrix[3] * point.x + matrix[4] * point.y + matrix[5]) / scale};
+        const auto target = transform.map(point);
         if (!std::isfinite(target.x) || !std::isfinite(target.y))
             throw ContractError("ROI transform produced non-finite coordinates");
         return target;
@@ -519,9 +499,8 @@ std::array<cv::Point2d, 2> transformedRoiBounds(std::span<const double> encoded,
         const auto        circle     = region.circle();
         const double      radius     = circle.radius();
         const cv::Point2d center     = map(circle.center());
-        const double      scale      = std::abs(matrix[8]);
-        const double      halfWidth  = radius * std::hypot(matrix[0], matrix[1]) / scale;
-        const double      halfHeight = radius * std::hypot(matrix[3], matrix[4]) / scale;
+        const double      halfWidth  = radius * std::hypot(matrix[0], matrix[1]);
+        const double      halfHeight = radius * std::hypot(matrix[3], matrix[4]);
         mapped = {{center.x - halfWidth, center.y - halfHeight},
                   {center.x + halfWidth, center.y + halfHeight}};
         break;

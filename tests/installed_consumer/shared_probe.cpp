@@ -47,5 +47,5 @@ visionrt::PortValue contractSharedArray()
 
 visionrt::PortValue contractSharedRoi()
 {
-    return visionrt::DataRef<visionrt::ROI>(visionrt::ROI{{{0, 16777217.125, -2.5}}, {}});
+    return visionrt::Point::fromEncoded(visionrt::ROI{{{0, 16777217.125, -2.5}}, {}});
 }

@@ -1,0 +1,5 @@
+VRT_SHAPE(Point, Point, PointView, 10, point, "点")
+VRT_SHAPE(Line, Segment, SegmentView, 11, line, "线")
+VRT_SHAPE(Rectangle, Rectangle, RectangleView, 12, rectangle, "矩形")
+VRT_SHAPE(Circle, Circle, CircleView, 13, circle, "圆")
+VRT_SHAPE(Polygon, Polygon, PolygonView, 14, polygon, "多边形")

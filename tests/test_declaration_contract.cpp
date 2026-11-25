@@ -38,7 +38,7 @@ void rejects(Callable callable, const std::string &needle)
 }
 
 const char *kOrdinaryTool = R"({
-  "schema_version": 2,
+  "schema_version": 4,
   "name_en": "test.ordinary",
   "name_zh": "普通工具",
   "version": "1.0.0",
@@ -71,17 +71,17 @@ int main()
 try
 {
     const auto trainable = readToolDeclaration(R"({
-      "schema_version":2,"name_en":"trainable","name_zh":"训练工具","version":"1.0.0",
+      "schema_version":4,"name_en":"trainable","name_zh":"训练工具","version":"1.0.0",
       "implementation":{"kind":"cpp"},
       "train_params":[
-        {"id":1,"name_zh":"模型路径","type":"string","scope":"tool","ui":{"editor":"path"}},
-        {"id":2,"name_zh":"颜色名称","type":"string","scope":"record"}
+        {"id":1,"name_zh":"模型路径","type":"string","ui":{"editor":"path"}},
+        {"id":2,"name_zh":"颜色名称","type":"string"}
       ],
       "outputs":[{"id":2,"name_zh":"模型路径","type":"string","produced_by":"train"}]
     })");
     const auto trainableJson = writeToolDeclaration(trainable);
     require(trainableJson.find("train_params") != std::string::npos
-                && trainableJson.find("record") != std::string::npos
+                && trainableJson.find("颜色名称") != std::string::npos
                 && trainableJson.find("produced_by") != std::string::npos,
             "training parameters and output phases survive a declaration round trip");
     const auto declaration = readToolDeclaration(kOrdinaryTool, "普通工具.json");
@@ -108,7 +108,7 @@ try
     require(writeToolDeclaration(restored) == written, "rewrite is stable");
 
     // Array elements keep the same exactness: a dense int64 vector stores each digit, not a double.
-    const auto arrayTool = readToolDeclaration(R"({"schema_version":2,"name_en":"a","name_zh":"b","version":"1",
+    const auto arrayTool = readToolDeclaration(R"({"schema_version":4,"name_en":"a","name_zh":"b","version":"1",
         "implementation":{"kind":"cpp"},"inputs":[{"id":1,"name_zh":"序列","type":{"type":"array","dtype":"int64","rank":1},
         "default":[9007199254740993,9007199254740995]}]})");
     {
@@ -123,14 +123,14 @@ try
     rejects(
         []
         {
-            readToolDeclaration(R"({"schema_version":2,"name_en":"a","name_zh":"b","version":"1",
+            readToolDeclaration(R"({"schema_version":4,"name_en":"a","name_zh":"b","version":"1",
         "implementation":{"kind":"cpp"},"outputs":[{"id":0,"name_zh":"状态码","type":"int"}]})");
         },
         "宿主公共端口");
     rejects(
         []
         {
-            readToolDeclaration(R"({"schema_version":2,"name_en":"a","name_zh":"b","version":"1",
+            readToolDeclaration(R"({"schema_version":4,"name_en":"a","name_zh":"b","version":"1",
         "implementation":{"kind":"cpp"},"inputs":[{"id":0,"name_zh":"状态","type":"int"}]})");
         },
         "宿主公共端口");
@@ -139,14 +139,14 @@ try
     rejects(
         []
         {
-            readToolDeclaration(R"({"schema_version":2,"name_en":"a","name_zh":"b","version":"1",
+            readToolDeclaration(R"({"schema_version":4,"name_en":"a","name_zh":"b","version":"1",
         "implementation":{"kind":"cpp"},"inputs":[{"id":1,"name_zh":"x","type":"int","default":1.0}]})");
         },
         "必须是整数");
     rejects(
         []
         {
-            readToolDeclaration(R"({"schema_version":2,"name_en":"a","name_zh":"b","version":"1",
+            readToolDeclaration(R"({"schema_version":4,"name_en":"a","name_zh":"b","version":"1",
         "implementation":{"kind":"cpp"},"inputs":[{"id":1,"name_zh":"x","type":"int","default":18446744073709551616}]})");
         },
         "int64");
@@ -155,21 +155,21 @@ try
     rejects(
         []
         {
-            readToolDeclaration(R"({"schema_version":2,"name_en":"a","name_zh":"b","version":"1",
+            readToolDeclaration(R"({"schema_version":4,"name_en":"a","name_zh":"b","version":"1",
         "implementation":{"kind":"cpp"},"inputs":[{"id":1,"name_zh":"x","type":"int","colour":1}]})");
         },
         "未知字段");
     rejects(
         []
         {
-            readToolDeclaration(R"({"schema_version":2,"name_en":"a","name_en":"b","name_zh":"b","version":"1",
+            readToolDeclaration(R"({"schema_version":4,"name_en":"a","name_en":"b","name_zh":"b","version":"1",
         "implementation":{"kind":"cpp"}})");
         },
         "重复字段");
     rejects(
         []
         {
-            readToolDeclaration(R"({"schema_version":2,"name_en":"a","name_zh":"b","version":"1",
+            readToolDeclaration(R"({"schema_version":4,"name_en":"a","name_zh":"b","version":"1",
         "implementation":{"kind":"cpp"},"node_model":9})");
         },
         "枚举名称");
@@ -182,16 +182,16 @@ try
         },
         "schema_version");
     auto trainer = readToolDeclaration(
-        R"({"schema_version":2,"name_en":"trainer","name_zh":"训练器","version":"1","implementation":{"kind":"cpp"},"inputs":[{"id":1,"name_zh":"训练集","type":"training_set"}]})");
+        R"({"schema_version":4,"name_en":"trainer","name_zh":"训练器","version":"1","implementation":{"kind":"cpp"},"inputs":[{"id":1,"name_zh":"训练集","type":"training_set"}]})");
     trainer.inputs[0].defaultValue = defaultValue(trainer.inputs[0].type);
-    require(isMissing(trainer.inputs[0].defaultValue), "a training set has no literal default");
+    require(std::get<DataRef<TrainingSet>>(trainer.inputs[0].defaultValue).get().records.empty(), "a training set has an ordinary empty default");
     require(isMissing(readToolDeclaration(writeToolDeclaration(trainer)).inputs[0].defaultValue),
-            "a normalized training input can be written and reopened");
+            "an implicit type default stays omitted in the author declaration");
     rejects(
         []
         {
             readToolDeclaration(
-                R"({"schema_version":2,"name_en":"a","name_zh":"b","version":"1","implementation":{"kind":"cpp"},"inputs":[{"id":1,"name_zh":"区域","type":"roi","relations":{"image":{"stage":"inputs","id":-1}}}]})");
+                R"({"schema_version":4,"name_en":"a","name_zh":"b","version":"1","implementation":{"kind":"cpp"},"inputs":[{"id":1,"name_zh":"区域","type":"rectangle","relations":{"image":{"stage":"inputs","id":-1}}}]})");
         },
         "32 位无符号整数");
     std::cout << "declaration read/write round-trip keeps exact integers and rejects at the field\n";

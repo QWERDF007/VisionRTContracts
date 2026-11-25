@@ -51,6 +51,106 @@ const std::vector<Node> &array(const Node &node, std::string_view what)
     return node.items;
 }
 
+const Node &required(const Node &node, std::string_view name)
+{
+    if (const auto *field = node.find(name)) return *field;
+    throw ContractError("缺少字段：" + std::string(name));
+}
+
+std::uint32_t identifier(const Node &node)
+{
+    const auto value = integer(node, "编号");
+    if (value < 0 || value > std::numeric_limits<std::uint32_t>::max()) throw ContractError("编号超出支持范围");
+    return static_cast<std::uint32_t>(value);
+}
+
+cv::Mat readPixels(const Node &node)
+{
+    try
+    {
+        cv::FileStorage storage(string(node, "图像"), cv::FileStorage::READ | cv::FileStorage::MEMORY);
+        cv::Mat pixels;
+        storage["pixels"] >> pixels;
+        if (pixels.empty()) throw ContractError("图像像素为空");
+        return pixels;
+    }
+    catch (const cv::Exception &error) { throw ContractError("图像存储格式不正确：" + std::string(error.what())); }
+}
+
+void writePixels(Writer &writer, const cv::Mat &pixels)
+{
+    cv::FileStorage storage(".json", cv::FileStorage::WRITE | cv::FileStorage::MEMORY
+                                    | cv::FileStorage::FORMAT_JSON | cv::FileStorage::BASE64);
+    storage << "pixels" << pixels;
+    const auto json = storage.releaseAndGetString();
+    writer.String(json.c_str(), static_cast<rapidjson::SizeType>(json.size()));
+}
+
+TrainingSet readTrainingSet(const Node &node)
+{
+    TrainingSet set;
+    for (const auto &image : array(required(node, "images"), "训练图像"))
+    {
+        const auto id = identifier(required(image, "id"));
+        const auto order = enumeration<ColorOrder>(required(image, "color_order"), "color_order");
+        if (!set.images.emplace(id, TrainingImage{id, readPixels(required(image, "pixels")), order}).second)
+            throw ContractError("训练图像编号重复");
+    }
+    for (const auto &record : array(required(node, "records"), "训练记录"))
+    {
+        TrainingRecord r;
+        r.id = identifier(required(record, "id"));
+        const auto &image = required(record, "image");
+        if (image.kind != Kind::Null) r.imageId = identifier(image);
+        for (const auto &field : array(required(record, "fields"), "记录字段"))
+        {
+            const auto id = identifier(required(field, "id"));
+            const auto &encodedType = required(field, "type");
+            const auto &encodedValue = required(field, "value");
+            if (encodedType.kind == Kind::Null && encodedValue.kind != Kind::Null)
+                throw ContractError("缺失字段值必须为 null");
+            auto value = encodedType.kind == Kind::Null ? PortValue{Missing{}} : decodeValue(encodedValue, decodeType(encodedType));
+            if (!r.fields.emplace(id, std::move(value)).second)
+                throw ContractError("训练字段编号重复");
+        }
+        if (!set.records.emplace(r.id, std::move(r)).second) throw ContractError("训练记录编号重复");
+    }
+    return set;
+}
+
+void writeTrainingSet(Writer &writer, const TrainingSet &set)
+{
+    writer.StartObject();
+    writer.Key("images"); writer.StartArray();
+    for (const auto &[id, image] : set.images)
+    {
+        writer.StartObject();
+        writer.Key("id"); writer.Uint(id);
+        writer.Key("color_order"); writer.String(wireName(image.colorOrder));
+        writer.Key("pixels"); writePixels(writer, image.pixels);
+        writer.EndObject();
+    }
+    writer.EndArray();
+    writer.Key("records"); writer.StartArray();
+    for (const auto &[id, r] : set.records)
+    {
+        writer.StartObject();
+        writer.Key("id"); writer.Uint(id);
+        writer.Key("image"); if (r.imageId) writer.Uint(*r.imageId); else writer.Null();
+        writer.Key("fields"); writer.StartArray();
+        for (const auto &[field, value] : r.fields)
+        {
+            writer.StartObject();
+            writer.Key("id"); writer.Uint(field);
+            writer.Key("type"); if (isMissing(value)) writer.Null(); else encodeType(writer, *typeOf(value));
+            writer.Key("value"); if (isMissing(value)) writer.Null(); else encodeValue(writer, value, *typeOf(value));
+            writer.EndObject();
+        }
+        writer.EndArray(); writer.EndObject();
+    }
+    writer.EndArray(); writer.EndObject();
+}
+
 template<class Element>
 Element element(const Node &node, std::string_view what)
 {
@@ -379,15 +479,26 @@ PortValue decodeValue(const Node &node, const TypeSpec &type)
         result = string(node, "值");
         break;
     case Type::Image:
-        if (!array(node, "值").empty())
-            throw ContractError("图像字面量只能是 null 或空数组");
-        result = DataRef<Image>(Image{});
+    {
+        Image images;
+        for (const auto &image : array(node, "图像批次")) images.push_back(readPixels(image));
+        result = DataRef<Image>(std::move(images));
+        break;
+    }
+    case Type::TrainingSet:
+        result = DataRef<TrainingSet>(readTrainingSet(node));
         break;
     case Type::Array:
         result = decodeArray(node, *type.dtype, type.rank);
         break;
-    case Type::ROI:
-        result = DataRef<ROI>(decodeNested<ROI>(node, "区域"));
+#define VRT_SHAPE(name, kind, view, code, wire, label) case Type::name: result = name::fromNested(decodeNested<ROI>(node, label)); break;
+#include "visionrt/contracts/ShapeKinds.def"
+#undef VRT_SHAPE
+    case Type::Direction:
+        result = Direction(decodeArray(node, *Direction::storageType().dtype, Direction::storageType().rank));
+        break;
+    case Type::CoordinateFrame2D:
+        result = CoordinateFrame2D(decodeArray(node, *CoordinateFrame2D::storageType().dtype, CoordinateFrame2D::storageType().rank));
         break;
     }
     validateValue(type, result);
@@ -417,9 +528,11 @@ void encodeValue(Writer &writer, const PortValue &value, const TypeSpec &type)
                 writer.String(item.c_str(), static_cast<rapidjson::SizeType>(item.size()));
             else if constexpr (std::is_same_v<Item, Array>)
                 writeArray(writer, item);
-            else if constexpr (std::is_same_v<Item, DataRef<ROI>>)
+            else if constexpr (std::is_same_v<Item, Direction> || std::is_same_v<Item, CoordinateFrame2D>)
+                writeArray(writer, item.array());
+            else if constexpr (isShapeValue<Item>)
             {
-                const auto &roi = item.get();
+                const auto roi = item.nested();
                 writer.StartArray();
                 for (const auto &slot : roi)
                 {
@@ -437,18 +550,12 @@ void encodeValue(Writer &writer, const PortValue &value, const TypeSpec &type)
             }
             else if constexpr (std::is_same_v<Item, DataRef<Image>>)
             {
-                // Pixels are runtime data and never enter a declaration: only the declared empty
-                // batch is a legal literal.
-                if (!item.get().empty())
-                    throw ContractError("图像字面量只能是 null 或空数组");
                 writer.StartArray();
+                for (const auto &image : item.get()) writePixels(writer, image);
                 writer.EndArray();
             }
             else
-            {
-                // A training set is a call input; a declaration has no way to spell one.
-                throw ContractError("训练集不能写入工具声明");
-            }
+                writeTrainingSet(writer, item.get());
         },
         value);
 }

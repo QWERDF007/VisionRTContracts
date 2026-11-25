@@ -15,7 +15,10 @@ add_library(VisionRTContracts STATIC
     src/Issue.cpp
     src/TypeSpec.cpp
     src/ROI.cpp
+    src/GeometryValues.cpp
+    src/Affine2D.cpp
     src/Value.cpp
+    src/ValueJson.cpp
     src/TrainingSet.cpp
     src/Declaration.cpp
     src/JsonDocument.cpp

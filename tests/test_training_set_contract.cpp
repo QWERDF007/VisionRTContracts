@@ -1,12 +1,29 @@
 #include "visionrt/contracts/Module.h"
 #include "visionrt/contracts/TrainingSet.h"
 #include "visionrt/contracts/Value.h"
+#include "visionrt/contracts/Parameters.h"
 
 #include <cstdlib>
 #include <iostream>
 #include <string>
 
 using namespace visionrt;
+
+class ParameterTrainer final : public IToolInstance
+{
+public:
+    ToolStatus initialize(const ToolConfiguration &) override { return {}; }
+    ToolResult execute(const Values &) override { return toolResult({}); }
+    ToolResult train(const Values &parameters) override
+    {
+        InputReader reader(parameters);
+        const auto directions = reader.direction(0);
+        const auto data = reader.trainingSet(1);
+        if (!directions || !data) throw ContractError("typed training input was lost");
+        return toolResult({{2, directions.value()}, {3, static_cast<std::int64_t>(data.value().get().records.size())}});
+    }
+    ToolStatus release() override { return {}; }
+};
 
 namespace {
 
@@ -29,7 +46,7 @@ TrainingSet twoRecordsOneImage()
     first.id      = 1;
     first.imageId = 7;
     first.fields.emplace(1, std::string("blue"));
-    first.fields.emplace(2, DataRef<ROI>(ROI{{{2, 1.0, 1.0, 2.0, 2.0, 0.0}}}));
+    first.fields.emplace(2, Rectangle::fromEncoded(ROI{{{2, 1.0, 1.0, 2.0, 2.0, 0.0}}}));
     set.records.emplace(first.id, first);
 
     TrainingRecord second;
@@ -46,7 +63,19 @@ TrainingSet twoRecordsOneImage()
 int main()
 try
 {
-    static_assert(MODULE_ABI_MAJOR == 11);
+    static_assert(MODULE_ABI_MAJOR == 15);
+
+    TrainingSet numeric;
+    TrainingRecord record;
+    record.id = 8;
+    record.fields.emplace(1, Direction::fromNested({{{10, 20, 5, 90}}}));
+    record.fields.emplace(2, DataRef<Image>(Image{cv::Mat(2, 2, CV_8UC1, cv::Scalar(17))}));
+    numeric.records.emplace(record.id, record);
+    validateTrainingSet(numeric);
+    ParameterTrainer trainer;
+    const auto trained = trainer.train({{0, Direction::fromNested({{{10, 20, 5, 90}}})}, {1, DataRef<TrainingSet>(numeric)}});
+    require(std::get<Direction>(trained.outputs.at(2)).at(0, 0).end() == cv::Point2d(10, 25), "training reads declared direction parameter");
+    require(std::get<std::int64_t>(trained.outputs.at(3)) == 1, "training set is an ordinary numbered parameter");
 
     auto set = twoRecordsOneImage();
     validateTrainingSet(set);
@@ -99,7 +128,7 @@ try
     }
     require(rejected, "empty frame is rejected");
 
-    require(isMissing(defaultValue(TypeSpec{Type::TrainingSet})), "training sets have no literal default");
+    require(std::get<DataRef<TrainingSet>>(defaultValue(TypeSpec{Type::TrainingSet})).get().records.empty(), "training set default is an empty typed value");
 
     std::cout << "training set keeps exact keys, shared images and its own pixels\n";
     return 0;

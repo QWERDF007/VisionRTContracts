@@ -229,7 +229,7 @@ void typeDefaults()
     assert(std::get<bool>(defaultValue({Type::Bool})) == false);
     assert(std::get<std::string>(defaultValue({Type::String})).empty());
     assert(std::get<DataRef<Image>>(defaultValue({Type::Image})).get().empty());
-    assert(std::get<DataRef<ROI>>(defaultValue({Type::ROI})).get().empty());
+    assert(std::get<Circle>(defaultValue({Type::Circle})).get().empty());
 
     const auto emptyArray = std::get<Array>(defaultValue({Type::Array, DType::Int64, 2}));
     assert(emptyArray.type() == (TypeSpec{Type::Array, DType::Int64, 2}));

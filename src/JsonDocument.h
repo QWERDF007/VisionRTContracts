@@ -1,9 +1,8 @@
 #pragma once
 
 // A JSON tree that keeps every number's original text. Declarations store exact integers (a port
-// default of 2^53+1 must survive a round trip) and RapidJSON's default DOM stores numbers as
-// double, so the reader builds this tree through a SAX handler that hands numbers over as raw
-// text. Nothing here is installed: it is the private reading substrate of DeclarationJson.cpp.
+// default of 2^53+1 must survive a round trip). Raw numeric tokens also let the typed reader reject
+// fractional integer literals and out-of-range integers before conversion. Nothing here is installed.
 
 #include <cstddef>
 #include <string>

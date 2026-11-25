@@ -166,8 +166,8 @@ int main()
     rejects([&] { RegionEditor(vertexRectangle).setVertex(0, {1, 1}); });
 
     // The transform path keeps its geometry while reading through the views.
-    const std::array<double, 9> identity{1, 0, 0, 0, 1, 0, 0, 0, 1};
-    const std::array<double, 9> translate{1, 0, 10, 0, 1, 20, 0, 0, 1};
+    const Affine2D identity{{1, 0, 0, 0, 1, 0}};
+    const Affine2D translate{{1, 0, 10, 0, 1, 20}};
     const auto                  originalRectangle = transformedRoiBounds(rectangle, identity);
     const auto                  shiftedRectangle  = transformedRoiBounds(rectangle, translate);
     assert(near(shiftedRectangle[0].x, originalRectangle[0].x + 10)

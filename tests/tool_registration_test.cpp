@@ -107,7 +107,7 @@ try
 {
     TestRegistry registry;
     Counter untrained;
-    const auto unsupported = untrained.train(TrainingSet{}, {});
+    const auto unsupported = untrained.train({});
     assert(std::get<std::int64_t>(unsupported.outputs.at(kStatusCodePort)) != 0);
     assert(std::get<std::string>(unsupported.outputs.at(kStatusMessagePort)) == "不支持训练");
     assert(registerFunction<&addOne>(registry, "test.function.add_one").code == 0);

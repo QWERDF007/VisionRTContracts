@@ -28,11 +28,11 @@ void rejectsAt(Operation &&operation, int line)
 int main()
 try
 {
-    static_assert(MODULE_ABI_MAJOR == 11);
+    static_assert(MODULE_ABI_MAJOR == 15);
     static_assert(std::is_same_v<std::variant_alternative_t<4, PortValue>, std::string>);
     assert(std::string_view(typeName(Type::Image)) == "Image");
     assert(std::string_view(typeName(Type::Array)) == "Array");
-    assert(std::string_view(typeName(Type::ROI)) == "ROI");
+    assert(std::string_view(typeName(Type::Circle)) == "Circle");
     assert(std::string_view(dtypeName(DType::String)) == "string");
     rejects([] { typeName(static_cast<Type>(-1)); });
     rejects([] { dtypeName(static_cast<DType>(999)); });
@@ -58,26 +58,20 @@ try
                                 std::string("\xe4\xb8", 2), std::string("\x80", 1)})
         rejects([&] { validateUtf8(encoded); });
 
-    const DataRef<ROI> roi(ROI{
-        {{0, 1.125, 2.25}, {1, 1, 2, 3, 4}, {2, 10, 20, 8, 4, 90}, {3, 1, 2, 3}, {4, 0, 0, 4, 0, 0, 4}, {5, 1, 2}},
-        {}
-    });
-    validateValue({Type::ROI}, roi);
-    assert(roiKind(roi.get()[0][0]) == RoiKind::Point);
-    const auto corners = rectangleCorners(roi.get()[0][2]);
-    assert(std::abs(corners[0].x - 16) < 1e-12);
-    assert(std::abs(corners[0].y - 18) < 1e-12);
-    assert(std::abs(corners[2].x - 12) < 1e-12);
-    assert(std::abs(corners[2].y - 26) < 1e-12);
+    const auto points = Point::fromNested({{{1.125, 2.25}}, {}});
+    validateValue({Type::Point}, points);
+    const auto rectangles = Rectangle::fromNested({{{10, 20, 8, 4, 90}}});
+    const auto corners = rectangles.at(0, 0).corners();
+    assert(std::abs(corners[0].x - 16) < 1e-12 && std::abs(corners[0].y - 18) < 1e-12);
+    assert(std::abs(corners[2].x - 12) < 1e-12 && std::abs(corners[2].y - 26) < 1e-12);
     const double subpixel = 16777217.125;
-    const auto   precise  = rectangleCorners(std::array{2.0, subpixel, 1.0, 2.0, 4.0, 0.0});
+    const auto precise = rectangleCorners(std::array{2.0, subpixel, 1.0, 2.0, 4.0, 0.0});
     assert(precise[0].x == subpixel && precise[2].x == subpixel + 2);
-    assert(!equalValues(DataRef<ROI>(ROI{}), DataRef<ROI>(ROI{{}})));
-    const auto roiAlias     = roi;
-    roiAlias.get()[0][0][1] = 9.5;
-    assert(roi.get()[0][0][1] == 9.5);
-    roiAlias.get()[0][0][0] = 0.5;
-    rejects([&] { validateValue({Type::ROI}, roi); });
+    assert(!equalValues(Circle{}, Circle::fromNested({{}})));
+    const auto aliasPoints = points;
+    assert(&aliasPoints.get() == &points.get());
+    rejects([] { Circle::fromEncoded({{makePoint(1, 2)}}); });
+    rejects([] { typeFromCode(6); });
     for (const std::vector<double> &bad : std::initializer_list<std::vector<double>>{
              {},
              {0, 1},
@@ -95,60 +89,18 @@ try
         rejects([&] { validateRoi(bad); });
     rejects([] { rectangleCorners(std::array{0.0, 1.0, 2.0}); });
 
-    // ROI transforms: a circle keeps its true ellipse extent under a non-uniform alignment, and a
-    // projective singularity is reported instead of being replaced by a coordinate that looks real.
-    const std::vector<double>   circle{3.0, 0.0, 0.0, 5.0};
-    const std::array<double, 9> identityMatrix{1, 0, 0, 0, 1, 0, 0, 0, 1};
-    {
-        const auto box = transformedRoiBounds(circle, identityMatrix);
-        assert(box[0] == cv::Point2d(-5.0, -5.0) && box[1] == cv::Point2d(5.0, 5.0));
-    }
-    {
-        // x scaled by two, y untouched: a 2:1 ellipse, not a circle of radius ten.
-        const std::array<double, 9> stretched{2, 0, 0, 0, 1, 0, 0, 0, 1};
-        const auto                  box = transformedRoiBounds(circle, stretched);
-        assert(box[0] == cv::Point2d(-10.0, -5.0) && box[1] == cv::Point2d(10.0, 5.0));
-    }
-    {
-        // Shear x' = x + 2y: the x half-extent grows to r*sqrt(5) while y stays r.
-        const std::array<double, 9> shear{1, 2, 0, 0, 1, 0, 0, 0, 1};
-        const auto                  box = transformedRoiBounds(circle, shear);
-        assert(std::abs(box[1].x - 5.0 * std::sqrt(5.0)) < 1e-12);
-        assert(std::abs(box[0].x + 5.0 * std::sqrt(5.0)) < 1e-12);
-        assert(std::abs(box[1].y - 5.0) < 1e-12 && std::abs(box[0].y + 5.0) < 1e-12);
-    }
-    {
-        // A quarter turn moves the centre without changing the extent.
-        const std::array<double, 9> quarter{0, -1, 0, 1, 0, 0, 0, 0, 1};
-        const auto                  box = transformedRoiBounds(circle, quarter);
-        assert(std::abs(box[0].x + 5.0) < 1e-12 && std::abs(box[0].y + 5.0) < 1e-12);
-        assert(std::abs(box[1].x - 5.0) < 1e-12 && std::abs(box[1].y - 5.0) < 1e-12);
-    }
-    {
-        // The same transform written with a homogeneous scale of four must land in the same frame.
-        const std::array<double, 9> homogeneous{4, 0, 12, 0, 4, 8, 0, 0, 4};
-        const auto                  box = transformedRoiBounds(circle, homogeneous);
-        assert(std::abs(box[0].x + 2.0) < 1e-12 && std::abs(box[0].y + 3.0) < 1e-12);
-        assert(std::abs(box[1].x - 8.0) < 1e-12 && std::abs(box[1].y - 7.0) < 1e-12);
-    }
-    {
-        // w = x, evaluated at the circle centre (0,0): the seed has no image in the target frame.
-        // The message must name the singularity, so a caller can tell it apart from a shape error.
-        bool diagnosed = false;
-        try { transformedRoiBounds(circle, std::array<double, 9>{1, 0, 0, 0, 1, 0, 0, 0, 0}); }
-        catch (const ContractError &error)
-        {
-            diagnosed = std::string_view(error.what()).find("singular") != std::string_view::npos;
-        }
-        assert(diagnosed);
-    }
-    // A non-finite matrix entry, and an affine matrix whose extents overflow, are both rejected
-    // rather than returned as an infinite box.
-    rejects([&] {
-        transformedRoiBounds(circle, std::array<double, 9>{1, 0, 0, 0, 1, 0, 0, 0,
-                                                           std::numeric_limits<double>::quiet_NaN()});
-    });
-    rejects([&] { transformedRoiBounds(circle, std::array<double, 9>{1e308, 0, 0, 0, 1, 0, 0, 0, 1e-308}); });
+    const auto circle = makeCircle({0, 0}, 5);
+    const auto identityBounds = transformedRoiBounds(circle, Affine2D::identity());
+    assert(identityBounds[0] == cv::Point2d(-5, -5) && identityBounds[1] == cv::Point2d(5, 5));
+    const auto stretched = transformedRoiBounds(circle, Affine2D{{2, 0, 0, 0, 1, 0}});
+    assert(stretched[0] == cv::Point2d(-10, -5) && stretched[1] == cv::Point2d(10, 5));
+    const auto sheared = transformedRoiBounds(circle, Affine2D{{1, 2, 0, 0, 1, 0}});
+    assert(std::abs(sheared[1].x - 5 * std::sqrt(5.0)) < 1e-12);
+    const auto translated = transformedRoiBounds(circle, Affine2D{{1, 0, 3, 0, 1, 2}});
+    assert(translated[0] == cv::Point2d(-2, -3) && translated[1] == cv::Point2d(8, 7));
+    rejects([&] { transformedRoiBounds(circle, Affine2D{{1, 0, 0, 0, 0, 0}}); });
+    rejects([&] { transformedRoiBounds(circle, Affine2D{{1, 0, 0, 0, 1, std::numeric_limits<double>::quiet_NaN()}}); });
+    rejects([&] { transformedRoiBounds(circle, Affine2D{{1e308, 0, 0, 0, 1, 0}}); });
 
     const DataRef<Image> images(Image{cv::Mat(3, 7, CV_8UC1, cv::Scalar(17))});
     const auto           alias            = images;
@@ -183,7 +135,7 @@ try
     assert(equalValues(flags, Array::fromNested(std::vector<bool>{true, true, true})));
     assert(!equalValues(flags, Array::fromNested(std::vector<std::int32_t>{1, 1, 1})));
 
-    for (const PortValue &source : {PortValue(DataRef<Image>(Image{})), PortValue(DataRef<ROI>(ROI{{}}))})
+    for (const PortValue &source : {PortValue(DataRef<Image>(Image{})), PortValue(Circle::fromNested({{}}))})
     {
         std::weak_ptr<void> weak;
         PortValue           retained;

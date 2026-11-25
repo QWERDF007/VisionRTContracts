@@ -2,6 +2,19 @@
 
 namespace visionrt {
 
+bool PortDefinition::operator==(const PortDefinition &other) const
+{
+    const auto optionalValueEqual = [](const auto &left, const auto &right)
+    { return left.has_value() == right.has_value() && (!left || equalValues(*left, *right)); };
+    return id == other.id && nameZh == other.nameZh && type == other.type && nameEn == other.nameEn
+        && equalValues(defaultValue, other.defaultValue) && editor == other.editor && tab == other.tab && group == other.group
+        && optionalValueEqual(step, other.step) && decimals == other.decimals && optionsProvider == other.optionsProvider
+        && optionalValueEqual(minimum, other.minimum) && optionalValueEqual(maximum, other.maximum) && options == other.options
+        && image == other.image && alignment == other.alignment && sameGeometryAs == other.sameGeometryAs
+        && colorOrder == other.colorOrder && imageVisible == other.imageVisible && typeFrom == other.typeFrom
+        && producedBy == other.producedBy && minRegions == other.minRegions && maxRegions == other.maxRegions;
+}
+
 const char *stageName(PortStage stage) noexcept
 {
     switch (stage)

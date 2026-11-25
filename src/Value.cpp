@@ -27,6 +27,26 @@ bool isMissing(const PortValue &value) noexcept
     return std::holds_alternative<Missing>(value);
 }
 
+const ROI *shapeRegions(const PortValue &value) noexcept
+{
+    return std::visit([](const auto &payload) -> const ROI * {
+        using T = std::decay_t<decltype(payload)>;
+        if constexpr (isShapeValue<T>) return &payload.get();
+        else return nullptr;
+    }, value);
+}
+
+PortValue shapeValue(Type type, ROI encoded)
+{
+    switch (type)
+    {
+#define VRT_SHAPE(name, kind, view, code, wire, label) case Type::name: return name::fromEncoded(std::move(encoded));
+#include "visionrt/contracts/ShapeKinds.def"
+#undef VRT_SHAPE
+    default: throw ContractError("参数必须声明点、线、矩形、圆或多边形类型");
+    }
+}
+
 std::optional<TypeSpec> typeOf(const PortValue &value)
 {
     return std::visit(
@@ -45,8 +65,6 @@ std::optional<TypeSpec> typeOf(const PortValue &value)
                 return TypeSpec{Type::String};
             else if constexpr (std::is_same_v<T, DataRef<Image>>)
                 return TypeSpec{Type::Image};
-            else if constexpr (std::is_same_v<T, DataRef<ROI>>)
-                return TypeSpec{Type::ROI};
             else if constexpr (std::is_same_v<T, DataRef<TrainingSet>>)
                 return TypeSpec{Type::TrainingSet};
             else
@@ -78,11 +96,6 @@ void validateValue(const TypeSpec &expected, const PortValue &value)
             {
                 validateTrainingSet(payload.get());
             }
-            else if constexpr (std::is_same_v<T, DataRef<ROI>>)
-            {
-                for (const auto &group : payload.get())
-                    for (const auto &roi : group) validateRoi(roi);
-            }
             else if constexpr (std::is_same_v<T, Array>)
             {
                 if (payload.dtype() == DType::String)
@@ -103,15 +116,30 @@ bool equalValues(const PortValue& left, const PortValue& right) {
             {
                 return payload == other;
             }
-            else if constexpr (std::is_same_v<T, DataRef<ROI>>)
-            {
-                return payload.get() == other.get();
-            }
             else if constexpr (std::is_same_v<T, DataRef<TrainingSet>>)
             {
-                // A training set is a call input, never a stored value; two sets are equal only
-                // when they are the same set.
-                return &payload.get() == &other.get();
+                const auto &first = payload.get();
+                const auto &second = other.get();
+                if (&first == &second) return true;
+                if (first.images.size() != second.images.size() || first.records.size() != second.records.size()) return false;
+                for (const auto &[id, image] : first.images)
+                {
+                    const auto found = second.images.find(id);
+                    if (found == second.images.end() || image.colorOrder != found->second.colorOrder
+                        || !equalValues(DataRef<Image>(Image{image.pixels}), DataRef<Image>(Image{found->second.pixels}))) return false;
+                }
+                for (const auto &[id, record] : first.records)
+                {
+                    const auto found = second.records.find(id);
+                    if (found == second.records.end() || record.imageId != found->second.imageId
+                        || record.fields.size() != found->second.fields.size()) return false;
+                    for (const auto &[field, value] : record.fields)
+                    {
+                        const auto otherField = found->second.fields.find(field);
+                        if (otherField == found->second.fields.end() || !equalValues(value, otherField->second)) return false;
+                    }
+                }
+                return true;
             }
             else if constexpr (std::is_same_v<T, DataRef<Image>>)
             {
@@ -141,8 +169,9 @@ PortValue retainValue(const PortValue &value, Owner dependency)
         [&](const auto &payload) -> PortValue
         {
             using T = std::decay_t<decltype(payload)>;
-            if constexpr (std::is_same_v<T, DataRef<Image>> || std::is_same_v<T, DataRef<ROI>>
-                          || std::is_same_v<T, DataRef<TrainingSet>> || std::is_same_v<T, Array>)
+            if constexpr (std::is_same_v<T, DataRef<Image>>
+                          || std::is_same_v<T, DataRef<TrainingSet>> || std::is_same_v<T, Array>
+                          || std::is_same_v<T, Direction> || std::is_same_v<T, CoordinateFrame2D> || isShapeValue<T>)
                 return payload.retainedBy(dependency);
             else
                 return payload;
@@ -167,10 +196,15 @@ PortValue defaultValue(const TypeSpec &type)
         return DataRef<Image>(Image{});
     case Type::Array:
         return Array::empty(*type.dtype, type.rank);
-    case Type::ROI:
-        return DataRef<ROI>(ROI{});
     case Type::TrainingSet:
-        return Missing{};
+        return DataRef<TrainingSet>(TrainingSet{});
+    case Type::CoordinateFrame2D:
+        return CoordinateFrame2D{};
+    case Type::Direction:
+        return Direction{};
+#define VRT_SHAPE(name, kind, view, code, wire, label) case Type::name: return name{};
+#include "visionrt/contracts/ShapeKinds.def"
+#undef VRT_SHAPE
     }
     throw ContractError("未知端口类型");
 }

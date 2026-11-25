@@ -11,6 +11,7 @@
 #include "visionrt/contracts/Value.h"
 
 #include <cstdint>
+#include <concepts>
 #include <filesystem>
 #include <map>
 #include <optional>
@@ -19,6 +20,8 @@
 #include <vector>
 
 namespace visionrt {
+
+inline constexpr int kToolDeclarationSchemaVersion = 4;
 
 // A port reference is a stage plus a number: the same number may exist once per direction.
 struct PortRef
@@ -40,6 +43,16 @@ struct PortTypeReference
 // One declared parameter. `id` is its identity inside the tool and stage; the vector order is only
 // the display order, so moving a row never renumbers it. `nameEn` is an author note for readers and
 // migration diffs — nothing looks a port up by it.
+struct PortOption
+{
+    PortValue value;
+    std::string label;
+    PortOption(PortValue v, std::string text = {}) : value(std::move(v)), label(std::move(text)) {}
+    template<class T> requires std::constructible_from<PortValue, T>
+    PortOption(T &&v) : value(std::forward<T>(v)) {}
+    bool operator==(const PortOption &other) const { return label == other.label && equalValues(value, other.value); }
+};
+
 struct PortDefinition
 {
     PortId                           id = 0;
@@ -57,7 +70,7 @@ struct PortDefinition
     OptionsProvider                  optionsProvider = OptionsProvider::None;
     std::optional<PortValue>         minimum;
     std::optional<PortValue>         maximum;
-    std::vector<PortValue>           options;
+    std::vector<PortOption>          options;
     std::optional<PortRef>           image;
     std::optional<PortRef>           alignment;
     std::optional<PortRef>           sameGeometryAs;
@@ -66,11 +79,10 @@ struct PortDefinition
     // the declaration means false: an image port never joins the selector without being named.
     bool                             imageVisible = false;
     std::optional<PortTypeReference> typeFrom;
-    ParameterScope scope = ParameterScope::Tool;
     ProducedBy producedBy = ProducedBy::Both;
-    bool roi = false;
     int minRegions = 0;
     int maxRegions = 0;
+    VT_EXPORT bool operator==(const PortDefinition &other) const;
 };
 
 // Model bytes are transient ToolResult artifacts; the declaration binds their identity to
@@ -85,11 +97,18 @@ struct TrainingArtifactSpec
     bool operator==(const TrainingArtifactSpec&) const = default;
 };
 
+struct TrainingDatasetSpec
+{
+    PortId parameter = 0;
+    std::optional<PortRef> image;
+    int maxRecords = 0;
+    std::vector<PortDefinition> fields;
+    bool operator==(const TrainingDatasetSpec &) const = default;
+};
+
 struct TrainingSpec
 {
-    PortRef image;
-    int maxRecords = 0;
-    PortId overlayOutput = 0;
+    std::vector<TrainingDatasetSpec> datasets;
     std::vector<TrainingArtifactSpec> artifacts;
     bool operator==(const TrainingSpec&) const = default;
 };

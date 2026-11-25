@@ -89,7 +89,7 @@ public:
     virtual ~IToolInstance() = default;
     virtual ToolStatus initialize(const ToolConfiguration& configuration) = 0;
     virtual ToolResult execute(const Values& inputs) = 0;
-    virtual ToolResult train(const TrainingSet&, const Values&)
+    virtual ToolResult train(const Values&)
     {
         return toolResult({}, {1, "不支持训练"});
     }

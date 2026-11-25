@@ -22,7 +22,7 @@ struct SampleInputs final : InputParametersBase
     double                        gain   = -1.0;
     double                        offset = -1.0;
     std::int64_t                  count  = 0;
-    std::optional<DataRef<ROI>>   mask;
+    std::optional<Rectangle>   mask;
     std::optional<Array>            flags;
 
     ToolStatus readFields(InputReader &reader) override
@@ -39,7 +39,7 @@ struct SampleInputs final : InputParametersBase
         auto count = reader.optionalInteger(in::Count);
         if (!count)
             return {1002, "计数不合法", count.issue().describe()};
-        auto mask = reader.nullableRoi(in::Mask);
+        auto mask = reader.nullableRectangle(in::Mask);
         if (!mask)
             return {1001, "掩膜不合法", mask.issue().describe()};
         auto flags = reader.nullableArray(in::Flags);
@@ -59,12 +59,12 @@ struct SampleInputs final : InputParametersBase
 struct SampleOutputs final : OutputParametersBase
 {
     std::optional<DataRef<Image>> images;
-    std::optional<DataRef<ROI>>   appliedMask;
+    std::optional<Rectangle>   appliedMask;
 
     void writeFields(OutputWriter &writer) override
     {
         writer.optionalImage(out::Images, images);
-        writer.optionalRoi(out::AppliedMask, appliedMask);
+        writer.optionalRectangle(out::AppliedMask, appliedMask);
     }
 };
 
@@ -95,7 +95,7 @@ try
     // The parsed parameter, not the caller, must keep the image alive: the source leaves scope
     // before the lifetime is checked, so an expired weak pointer would prove a missing reference.
     std::weak_ptr<void> weak;
-    const auto          mask = DataRef<ROI>(ROI{{{2, 0, 0, 2, 2, 0}}});
+    const auto          mask = Rectangle::fromEncoded(ROI{{{2, 0, 0, 2, 2, 0}}});
     SampleInputs        inputs;
     ToolStatus          accepted;
     {

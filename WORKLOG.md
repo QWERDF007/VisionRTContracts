@@ -21,6 +21,53 @@
 - ...
 -->
 
+### 2026-11-25 — 提交参数与具体形状契约
+
+**目标**
+- 提交已验证的四阶段参数、具体形状、方向、坐标系和六系数对齐契约。
+
+**当前状态**
+- 本轮提交包含先前全部 SDK 实现、测试和文档改动，提交身份以 Git 历史为准，未推送。两份检出保持相同内容，两个父仓固定同一 SDK 提交。
+
+**验证证据**
+- 沿用宿主 concrete-final-tests.log 的六项 SDK 测试、concrete-sdk-installed.log 的隔离安装与独立消费，以及 concrete-assist.log 的真实错型连接和编辑验证。
+- 提交前核对两份暂存树一致，差异格式检查通过；本轮只整理任务账本与 Git 引用。
+
+**下一步**
+- 无待续接 SDK 开发；整体提交与跨仓验证入口见宿主 WORKLOG 最新相关条目。
+
+### 2026-11-25 — 具体形状端口契约
+
+**目标**
+- 点、线、矩形、圆、多边形为独立参数类型，对外删除通用 ROI 类型及读写接口。
+
+**当前状态**
+- ShapeKinds.def 统一类型映射，ShapeBatch 保持单一形状和只读存储；PortValue、声明、JSON、参数读写已接入，ABI 15、声明格式 4。内部绘制继续复用编码视图。未提交。
+
+**验证证据**
+- 宿主 concrete-shapes-red-build.log 与 concrete-shape-ports-red.log 先复现新接口缺失；新类型和读写测试随后通过。concrete-host-regression.log 中 SDK、声明、JSON 测试通过；concrete-shape-value.log 的 Python 和工程往返四项通过。
+- 宿主 concrete-final-tests.log 的六项 SDK 测试通过；concrete-sdk-installed.log 的 SDK 隔离安装、编译与独立消费通过。根源码、Python 与工程往返以及错型连接和真实窗口验证入口见宿主最新账本。
+
+**下一步**
+- 两份检出字节比较一致；无待续接 SDK 代码。未提交，跨仓交付与正式 AOCI 收尾见宿主 WORKLOG 最新条目。
+
+### 2026-11-24 — 通用几何值与参数契约
+
+**目标**
+- 配合宿主完整方案统一训练参数并新增二维坐标系、方向类型。
+
+**当前状态**
+- GeometryValues 使用现有 Array 实现方向、二维坐标系和具名视图；Affine2D 统一 N×6 对齐、广播、逆变换和 ROI 边界。train(Values)、PortValue 通用字段、可选图像、普通 TrainingSet 默认值已接入，ABI 为 14。声明格式 3 使用独立 datasets/fields 与 value/label。ValueJsonDocument 统一精确数字、原始图像及通用训练集的持久化。
+- 两份检出源码已同步，宿主和工具仓已接入；尚未提交。
+
+**验证证据**
+- 宿主 build/geometry-values-red.log 首先复现缺少新类型；实现后 test_geometry_values_contract 通过，覆盖不等长分组、方向终点和坐标轴端点。
+- 宿主 value_json_contract 的新几何往返构建通过，见宿主 build/geometry-json-green-build.log；完整回归未执行。
+- 宿主 calibration-delivery-tests.log 的六项 SDK 契约通过；calibration-sdk-installed.log 的隔离安装编译与独立消费通过，包含新几何 codec 和六系数变换的链接及运行。未运行无关全量测试。
+
+**下一步**
+- 宿主 WORKLOG 记录整体交付及正式认知回执入口；提交前保持两份检出完全一致。尚未提交。
+
 ### 2026-11-24 — 原生枚举导出与构建身份查询
 
 **目标**

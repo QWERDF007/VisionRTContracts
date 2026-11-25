@@ -5,17 +5,46 @@
 #include <limits>
 
 namespace visionrt {
+namespace {
+#define VRT_ENUM_BEGIN(name, underlying, ...) constexpr auto names##name = [] { using Enum = name; return std::to_array<std::pair<Enum, const char *>>({
+#define VRT_ENUM_VALUE(name, value, ...) {Enum::name, #name},
+#define VRT_ENUM_END(name) }); }();
+#include "visionrt/contracts/TypeSpec.def"
+#undef VRT_ENUM_BEGIN
+#undef VRT_ENUM_VALUE
+#undef VRT_ENUM_END
+}
 
 const char *typeName(Type type)
 {
-    static constexpr std::array names{"Int", "Float", "Bool", "String", "Image", "Array", "ROI", "TrainingSet"};
-    return names.at(static_cast<std::size_t>(type));
+    for (const auto &[value, name] : namesType) if (value == type) return name;
+    throw std::out_of_range("未知参数类型");
+}
+
+Type typeFromCode(std::int64_t code)
+{
+    for (const auto value : kTypeValues) if (static_cast<std::int64_t>(value) == code) return value;
+    throw ContractError("未知类型编码");
 }
 
 const char *typeLabel(Type type)
 {
-    static constexpr std::array names{"整数", "浮点数", "布尔值", "字符串", "图像", "数组", "ROI", "训练集"};
-    return names.at(static_cast<std::size_t>(type));
+    switch (type)
+    {
+    case Type::Int: return "整数";
+    case Type::Float: return "浮点数";
+    case Type::Bool: return "布尔值";
+    case Type::String: return "字符串";
+    case Type::Image: return "图像";
+    case Type::Array: return "数组";
+    case Type::TrainingSet: return "训练集";
+    case Type::CoordinateFrame2D: return "二维坐标系";
+    case Type::Direction: return "方向";
+#define VRT_SHAPE(name, kind, view, code, wire, label) case Type::name: return label;
+#include "visionrt/contracts/ShapeKinds.def"
+#undef VRT_SHAPE
+    }
+    throw std::out_of_range("未知参数类型");
 }
 
 const char *dtypeName(DType dtype)

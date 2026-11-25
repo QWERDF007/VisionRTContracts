@@ -5,14 +5,14 @@
 // fields without a project path or an editor object. Images and records are keyed by their own
 // numbers — a record never identifies its frame by list position.
 
-#include "visionrt/contracts/Array.h"
-#include "visionrt/contracts/DataRef.h"
+#include "visionrt/contracts/ValueTypes.h"
 #include "visionrt/contracts/Export.h"
 #include "visionrt/contracts/ProtocolEnums.h"
 #include "visionrt/contracts/ROI.h"
 
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <string>
 #include <variant>
 
@@ -24,10 +24,7 @@ using TrainingRecordId = std::uint32_t;
 // record is looked up by it. It is not a PortId, because a field never becomes a port value.
 using TrainingFieldId = std::uint32_t;
 
-// A field holds any scalar a port can carry, an Array or a region group. Images and training sets
-// are excluded by construction: nesting either one would put pixels or a second table inside a
-// field and leave no single owner for them.
-using TrainingFieldValue = std::variant<std::int64_t, double, bool, std::string, Array, DataRef<ROI>>;
+using TrainingFieldValue = PortValue;
 
 struct TrainingImage
 {
@@ -41,7 +38,7 @@ struct TrainingImage
 struct TrainingRecord
 {
     TrainingRecordId                     id = 0;
-    TrainingImageId                      imageId = 0;
+    std::optional<TrainingImageId>       imageId;
     std::map<TrainingFieldId, TrainingFieldValue> fields;
 };
 

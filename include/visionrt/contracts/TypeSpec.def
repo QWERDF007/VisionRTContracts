@@ -5,8 +5,12 @@ VRT_ENUM_VALUE(Bool, 2)
 VRT_ENUM_VALUE(String, 3)
 VRT_ENUM_VALUE(Image, 4)
 VRT_ENUM_VALUE(Array, 5)
-VRT_ENUM_VALUE(ROI, 6)
 VRT_ENUM_VALUE(TrainingSet, 7)
+VRT_ENUM_VALUE(CoordinateFrame2D, 8)
+VRT_ENUM_VALUE(Direction, 9)
+#define VRT_SHAPE(name, kind, view, code, wire, label) VRT_ENUM_VALUE(name, code)
+#include "ShapeKinds.def"
+#undef VRT_SHAPE
 VRT_ENUM_END(Type)
 VRT_ENUM_BEGIN(DType, int)
 VRT_ENUM_VALUE(UInt8, 0)

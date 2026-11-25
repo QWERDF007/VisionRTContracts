@@ -30,14 +30,11 @@ void validateTrainingSet(const TrainingSet &set)
     }
     for (const auto &[id, record] : set.records)
     {
-        if (!set.images.contains(record.imageId))
+        if (record.imageId && !set.images.contains(*record.imageId))
             throw ContractError("训练记录 " + std::to_string(id) + " 引用了不存在的图像 "
-                                + std::to_string(record.imageId));
+                                + std::to_string(*record.imageId));
         for (const auto &[field, value] : record.fields)
-            if (const auto *array = std::get_if<Array>(&value))
-                if (array->dtype() == DType::String)
-                    for (const auto &text : array->elements<std::string>())
-                        validateUtf8(text);
+            if (const auto type = typeOf(value)) validateValue(*type, value);
     }
 }
 

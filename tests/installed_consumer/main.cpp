@@ -3,6 +3,8 @@
 #include <visionrt/contracts/DeclarationJson.h>
 #include <visionrt/contracts/FunctionTool.h>
 #include <visionrt/contracts/Module.h>
+#include <visionrt/contracts/ValueJson.h>
+#include <visionrt/contracts/Affine2D.h>
 
 #include <cassert>
 #include <iostream>
@@ -88,14 +90,13 @@ try
     std::get<Array>(arrayAlias).elements<std::string>()[0] = "消费者修改";
     assert(std::get<Array>(array).elements<std::string>()[0] == "消费者修改");
     const auto regions = contractSharedRoi();
-    validateValue({Type::ROI}, regions);
-    assert(std::get<DataRef<ROI>>(regions).get()[0][0][1] == 16777217.125);
+    validateValue({Type::Point}, regions);
+    assert(std::get<Point>(regions).at(0, 0).point(0).x == 16777217.125);
     const auto regionsAlias = regions;
-    std::get<DataRef<ROI>>(regionsAlias).get()[0][0][1] += 0.25;
-    assert(std::get<DataRef<ROI>>(regions).get()[0][0][1] == 16777217.375);
-    const PortValue rectangle = DataRef<ROI>(ROI{{{2, 1.25, -2.5, 3.75, 4.5, 17.5}}});
-    validateValue({Type::ROI}, rectangle);
-    assert(typeOf(rectangle) == TypeSpec{Type::ROI});
+    assert(&std::get<Point>(regionsAlias).get() == &std::get<Point>(regions).get());
+    const PortValue rectangle = Rectangle::fromNested({{{1.25, -2.5, 3.75, 4.5, 17.5}}});
+    validateValue({Type::Rectangle}, rectangle);
+    assert(typeOf(rectangle) == TypeSpec{Type::Rectangle});
     const auto integer = parseInt64("9007199254740993");
     assert(integer == 9007199254740993LL);
     assert(formatInt64(integer) == "9007199254740993");
@@ -115,7 +116,7 @@ try
 
     // A tool author's own build reads and rewrites a declaration with no GUI framework linked.
     const auto declaration = readToolDeclaration(R"({
-        "schema_version": 2,
+        "schema_version": 4,
         "name_en": "consumer.tool",
         "name_zh": "消费者工具",
         "version": "1.0.0",
@@ -148,6 +149,11 @@ try
         assert(std::get<std::int64_t>(retained.get().records.at(3).fields.at(1)) == 9007199254740993LL);
         assert(retained.get().images.at(4).pixels.at<unsigned char>(0, 0) == 9);
     }
+    const PortValue direction = Direction::fromNested({{{10, 20, 5, 90}}});
+    const auto again = readValueJson(writeValueJson(direction, {Type::Direction}), {Type::Direction});
+    assert(std::get<Direction>(again).at(0, 0).end() == cv::Point2d(10, 25));
+    const auto affine = alignmentsFromArray(Array::fromNested(NestedVector<double, 2>{{1, 0, 10, 0, 1, 5}}), 1).front();
+    assert(affine.map({3, 4}) == cv::Point2d(13, 9));
     std::cout << "Installed value ownership, tool interface and declaration round-trip verified\n";
     return 0;
 }

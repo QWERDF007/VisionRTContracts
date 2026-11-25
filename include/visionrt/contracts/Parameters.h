@@ -77,10 +77,16 @@ public:
         return required<DataRef<Image>>(id, Type::Image);
     }
 
-    ReadResult<DataRef<ROI>> roi(PortId id) const
-    {
-        return required<DataRef<ROI>>(id, Type::ROI);
-    }
+    ReadResult<Direction> direction(PortId id) const { return required<Direction>(id, Type::Direction); }
+    template<class Shape> requires isShapeValue<Shape>
+    ReadResult<Shape> shape(PortId id) const { return required<Shape>(id, Shape::valueType); }
+#define VRT_SHAPE(name, kind, view, code, wire, label) \
+    ReadResult<name> wire(PortId id) const { return required<name>(id, Type::name); } \
+    ReadResult<std::optional<name>> nullable##name(PortId id) const { return optional<name>(id, Type::name); }
+#include "ShapeKinds.def"
+#undef VRT_SHAPE
+    ReadResult<CoordinateFrame2D> coordinateFrame(PortId id) const { return required<CoordinateFrame2D>(id, Type::CoordinateFrame2D); }
+    ReadResult<DataRef<TrainingSet>> trainingSet(PortId id) const { return required<DataRef<TrainingSet>>(id, Type::TrainingSet); }
 
     ReadResult<std::optional<std::int64_t>> optionalInteger(PortId id) const
     {
@@ -105,11 +111,6 @@ public:
     ReadResult<std::optional<DataRef<Image>>> nullableImage(PortId id) const
     {
         return optional<DataRef<Image>>(id, Type::Image);
-    }
-
-    ReadResult<std::optional<DataRef<ROI>>> nullableRoi(PortId id) const
-    {
-        return optional<DataRef<ROI>>(id, Type::ROI);
     }
 
     // Array handles keep the caller's shared buffer; nothing is copied or cloned.
@@ -192,24 +193,23 @@ public:
         return write(id, std::move(value));
     }
 
-    PortWrite roi(PortId id, DataRef<ROI> value)
-    {
-        return write(id, std::move(value));
-    }
-
     PortWrite array(PortId id, Array value)
     {
         return write(id, std::move(value));
     }
 
+    PortWrite direction(PortId id, Direction value) { return write(id, std::move(value)); }
+#define VRT_SHAPE(name, kind, view, code, wire, label) \
+    PortWrite wire(PortId id, name value) { return write(id, std::move(value)); } \
+    PortWrite optional##name(PortId id, const std::optional<name> &value) { return value ? wire(id, *value) : missing(id); }
+#include "ShapeKinds.def"
+#undef VRT_SHAPE
+    PortWrite coordinateFrame(PortId id, CoordinateFrame2D value) { return write(id, std::move(value)); }
+    PortWrite trainingSet(PortId id, DataRef<TrainingSet> value) { return write(id, std::move(value)); }
+
     PortWrite optionalImage(PortId id, const std::optional<DataRef<Image>> &value)
     {
         return value ? image(id, *value) : missing(id);
-    }
-
-    PortWrite optionalRoi(PortId id, const std::optional<DataRef<ROI>> &value)
-    {
-        return value ? roi(id, *value) : missing(id);
     }
 
     PortWrite optionalArray(PortId id, const std::optional<Array> &value)

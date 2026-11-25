@@ -3,6 +3,7 @@
 #include "visionrt/contracts/Export.h"
 
 #include <cstddef>
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -15,7 +16,29 @@ namespace visionrt {
 #define VRT_ENUM_FILE "TypeSpec.def"
 #include <visionrt/contracts/EnumDeclarations.h>
 
+#define VRT_ENUM_BEGIN(name, underlying, ...) inline constexpr auto k##name##Values = [] { using Enum = name; return std::to_array<Enum>({
+#define VRT_ENUM_VALUE(name, value, ...) Enum::name,
+#define VRT_ENUM_END(name) }); }();
+#include "TypeSpec.def"
+#undef VRT_ENUM_BEGIN
+#undef VRT_ENUM_VALUE
+#undef VRT_ENUM_END
+
 inline constexpr int kMaxArrayRank = 4;
+constexpr bool isShapeType(Type type) noexcept
+{
+    switch (type)
+    {
+#define VRT_SHAPE(name, kind, view, code, wire, label) case Type::name: return true;
+#include "ShapeKinds.def"
+#undef VRT_SHAPE
+    default: return false;
+    }
+}
+constexpr bool isGeometryType(Type type) noexcept
+{
+    return isShapeType(type) || type == Type::Direction || type == Type::CoordinateFrame2D;
+}
 
 struct TypeSpec
 {
@@ -32,6 +55,7 @@ public:
 };
 
 VT_EXPORT const char *typeName(Type type);
+VT_EXPORT Type typeFromCode(std::int64_t code);
 
 // The same type as a reader of a message expects to see it ("整数", "浮点数", …).
 VT_EXPORT const char *typeLabel(Type type);

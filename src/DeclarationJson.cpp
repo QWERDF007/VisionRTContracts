@@ -124,13 +124,13 @@ std::optional<PortValue> optionalValue(const Node &owner, std::string_view name,
 // Constraints and editor spelling are shared by value ports and training parameters: both name a
 // typed value with the same limits and the same control. Only the port adds tab, group and provider.
 void readConstraints(const Node &item, const TypeSpec &type, std::string_view where, std::optional<PortValue> &minimum,
-                     std::optional<PortValue> &maximum, std::vector<PortValue> &options)
+                     std::optional<PortValue> &maximum, std::vector<PortOption> &options)
 {
     const auto *constraints = item.find("constraints");
     if (constraints == nullptr)
         return;
     const auto &block = object(*constraints, std::string(where) + ".constraints");
-    fields(block, {"min", "max", "options"}, std::string(where) + ".constraints");
+    fields(block, {"min", "max", "options", "regions"}, std::string(where) + ".constraints");
     if (const auto value = optionalValue(block, "min", type, std::string(where) + ".constraints"))
         minimum = *value;
     if (const auto value = optionalValue(block, "max", type, std::string(where) + ".constraints"))
@@ -143,7 +143,12 @@ void readConstraints(const Node &item, const TypeSpec &type, std::string_view wh
         {
             try
             {
-                options.push_back(decljson::decodeValue(option, type));
+                if (option.kind == Kind::Object && option.find("value"))
+                {
+                    fields(option, {"value", "label"}, std::string(where) + ".constraints.options");
+                    options.emplace_back(decljson::decodeValue(*option.find("value"), type), optionalText(option, "label", where));
+                }
+                else options.emplace_back(decljson::decodeValue(option, type));
             }
             catch (const ContractError &error)
             {
@@ -175,33 +180,14 @@ std::vector<PortDefinition> ports(const Node &root, PortStage stage)
         const auto &item  = object(items->items[index], where);
         fields(
             item,
-            {"id", "name_zh", "name_en", "type", "type_from", "default", "constraints", "ui", "relations", "display", "scope", "canvas", "produced_by"},
+            {"id", "name_zh", "name_en", "type", "type_from", "default", "constraints", "ui", "relations", "display", "produced_by"},
             where);
         PortDefinition port;
         port.id     = portId(member(item, "id", where), context(where, "id"));
         port.nameZh = text(item, "name_zh", where);
-        if (item.has("scope") && stage != PortStage::Train)
-            throw ContractError(where + ".scope 仅属于训练参数");
-        port.scope = optionalEnumeration<ParameterScope>(item.find("scope"), ParameterScope::Tool, where + ".scope");
         if (item.has("produced_by") && !output)
             throw ContractError(where + ".produced_by 仅属于输出");
         port.producedBy = optionalEnumeration<ProducedBy>(item.find("produced_by"), ProducedBy::Both, where + ".produced_by");
-        if (const auto *canvas = item.find("canvas"))
-        {
-            if (stage != PortStage::Train || port.scope != ParameterScope::Record)
-                throw ContractError(where + ".canvas 需要记录级训练参数");
-            const auto &block = object(*canvas, where + ".canvas");
-            fields(block, {"min", "max"}, where + ".canvas");
-            port.roi = true;
-            for (const auto &[name, target] : {std::pair{"min", &port.minRegions}, std::pair{"max", &port.maxRegions}})
-                if (const auto *bound = block.find(name))
-                {
-                    const auto number = decljson::integer(*bound, where + ".canvas." + name);
-                    if (number < 0 || number > std::numeric_limits<int>::max())
-                        throw ContractError(where + ".canvas 超出范围");
-                    *target = static_cast<int>(number);
-                }
-        }
         if (item.has("name_en"))
             port.nameEn = optionalText(item, "name_en", where);
         if (const auto *typeFrom = item.find("type_from"))
@@ -221,6 +207,18 @@ std::vector<PortDefinition> ports(const Node &root, PortStage stage)
             port.type = decljson::decodeType(member(item, "type", where));
         }
         readConstraints(item, port.type, where, port.minimum, port.maximum, port.options);
+        if (const auto *constraints = item.find("constraints"))
+            if (const auto *regions = constraints->find("regions"))
+            {
+                fields(object(*regions, where + ".constraints.regions"), {"min", "max"}, where);
+                for (const auto &[name, target] : {std::pair{"min", &port.minRegions}, std::pair{"max", &port.maxRegions}})
+                    if (const auto *bound = regions->find(name))
+                    {
+                        const auto number = decljson::integer(*bound, where);
+                        if (number < 0 || number > std::numeric_limits<int>::max()) throw ContractError(where + " 区域数量超出范围");
+                        *target = static_cast<int>(number);
+                    }
+            }
         if (const auto *ui = item.find("ui"))
         {
             const auto &block = object(*ui, where + ".ui");
@@ -359,18 +357,33 @@ TrainingArtifactSpec readTrainingArtifact(const Node &node, std::string_view whe
 void readTraining(const Node &node, ToolDeclaration &declaration)
 {
     const auto &item = object(node, "training");
-    fields(item, {"image", "max_records", "overlay_output", "artifacts"}, "training");
+    fields(item, {"datasets", "artifacts"}, "training");
     TrainingSpec spec;
-    spec.image = reference(member(item, "image", "training"), "training.image");
-    if (const auto *maximum = item.find("max_records"))
+    if (const auto *datasets = item.find("datasets"))
     {
-        const auto value = decljson::integer(*maximum, "training.max_records");
-        if (value < 0 || value > std::numeric_limits<int>::max())
-            throw ContractError("training.max_records 超出范围");
-        spec.maxRecords = static_cast<int>(value);
+        if (datasets->kind != Kind::Array) throw ContractError("training.datasets 必须是数组");
+        for (const auto &entry : datasets->items)
+        {
+            fields(object(entry, "training.datasets"), {"parameter", "image", "max_records", "fields"}, "training.datasets");
+            TrainingDatasetSpec dataset;
+            dataset.parameter = portId(member(entry, "parameter", "training.datasets"), "training.datasets.parameter");
+            if (const auto *image = entry.find("image")) dataset.image = reference(*image, "training.datasets.image");
+            if (const auto *maximum = entry.find("max_records"))
+            {
+                const auto count = decljson::integer(*maximum, "training.datasets.max_records");
+                if (count < 0 || count > std::numeric_limits<int>::max()) throw ContractError("训练记录上限超出范围");
+                dataset.maxRecords = static_cast<int>(count);
+            }
+            if (const auto *recordFields = entry.find("fields"))
+            {
+                Node wrapper;
+                wrapper.kind = Kind::Object;
+                wrapper.members.emplace_back("train_params", *recordFields);
+                dataset.fields = ports(wrapper, PortStage::Train);
+            }
+            spec.datasets.push_back(std::move(dataset));
+        }
     }
-    if (const auto *overlay = item.find("overlay_output"))
-        spec.overlayOutput = portId(*overlay, "training.overlay_output");
     if (const auto *artifacts = item.find("artifacts"))
     {
         if (artifacts->kind != Kind::Array)
@@ -413,18 +426,6 @@ void writePorts(decljson::Writer &writer, std::string_view direction, const std:
         writer.StartObject();
         writer.Key("id");
         writer.Uint(port.id);
-        if (stage == PortStage::Train)
-        {
-            writer.Key("scope");
-            writer.String(decljson::wireName(port.scope));
-            if (port.roi)
-            {
-                writer.Key("canvas"); writer.StartObject();
-                writer.Key("min"); writer.Int(port.minRegions);
-                writer.Key("max"); writer.Int(port.maxRegions);
-                writer.EndObject();
-            }
-        }
         if (port.producedBy != ProducedBy::Both)
         {
             writer.Key("produced_by");
@@ -456,7 +457,7 @@ void writePorts(decljson::Writer &writer, std::string_view direction, const std:
             if (!isMissing(port.defaultValue) && !equalValues(port.defaultValue, defaultValue(port.type)))
                 writeDefault(writer, "default", port.defaultValue, port.type);
         }
-        if (port.minimum || port.maximum || !port.options.empty())
+        if (port.minimum || port.maximum || !port.options.empty() || port.minRegions || port.maxRegions)
         {
             writer.Key("constraints");
             writer.StartObject();
@@ -468,8 +469,25 @@ void writePorts(decljson::Writer &writer, std::string_view direction, const std:
             {
                 writer.Key("options");
                 writer.StartArray();
-                for (const auto &option : port.options) decljson::encodeValue(writer, option, port.type);
+                for (const auto &option : port.options)
+                {
+                    if (option.label.empty()) decljson::encodeValue(writer, option.value, port.type);
+                    else
+                    {
+                        writer.StartObject();
+                        writeDefault(writer, "value", option.value, port.type);
+                        writer.Key("label"); writer.String(option.label.c_str());
+                        writer.EndObject();
+                    }
+                }
                 writer.EndArray();
+            }
+            if (port.minRegions || port.maxRegions)
+            {
+                writer.Key("regions"); writer.StartObject();
+                writer.Key("min"); writer.Int(port.minRegions);
+                writer.Key("max"); writer.Int(port.maxRegions);
+                writer.EndObject();
             }
             writer.EndObject();
         }
@@ -567,8 +585,8 @@ ToolDeclaration readToolDeclaration(std::string_view json, std::string_view sour
                {"schema_version", "name_en", "name_zh", "version", "implementation", "ui", "init_params", "inputs",
                 "outputs", "train_params", "node_model", "training"},
                "工具声明");
-        if (decljson::integer(member(root, "schema_version", "工具声明"), "schema_version") != 2)
-            throw ContractError("工具声明 schema_version 必须为 2");
+        if (decljson::integer(member(root, "schema_version", "工具声明"), "schema_version") != kToolDeclarationSchemaVersion)
+            throw ContractError("工具声明 schema_version 不受支持");
         ToolDeclaration declaration;
         declaration.nameEn  = text(root, "name_en", "工具声明");
         declaration.nameZh  = text(root, "name_zh", "工具声明");
@@ -588,17 +606,6 @@ ToolDeclaration readToolDeclaration(std::string_view json, std::string_view sour
         declaration.initParams = ports(root, PortStage::Init);
         declaration.inputs     = ports(root, PortStage::Inputs);
         declaration.outputs    = ports(root, PortStage::Outputs);
-        if (declaration.training)
-        {
-            const auto &spec  = *declaration.training;
-            const auto  input = std::find_if(declaration.inputs.begin(), declaration.inputs.end(),
-                                             [&](const PortDefinition &port) { return port.id == spec.image.id; });
-            if (spec.image.stage != PortStage::Inputs || input == declaration.inputs.end())
-                throw ContractError("training.image 必须引用一个输入端口");
-            if (input->type.type != Type::Image)
-                throw ContractError("training.image 必须引用 Image 输入：" + input->nameZh);
-
-        }
         return declaration;
     }
     catch (const std::exception &error)
@@ -627,7 +634,7 @@ std::string writeToolDeclaration(const ToolDeclaration &declaration)
     decljson::Writer        writer(buffer);
     writer.StartObject();
     writer.Key("schema_version");
-    writer.Int(2);
+    writer.Int(kToolDeclarationSchemaVersion);
     writer.Key("name_en");
     writer.String(declaration.nameEn.c_str(), static_cast<rapidjson::SizeType>(declaration.nameEn.size()));
     writer.Key("name_zh");
@@ -695,9 +702,20 @@ std::string writeToolDeclaration(const ToolDeclaration &declaration)
     {
         const auto &spec = *declaration.training;
         writer.Key("training"); writer.StartObject();
-        writer.Key("image"); writeReference(writer, spec.image);
-        if (spec.maxRecords) { writer.Key("max_records"); writer.Int(spec.maxRecords); }
-        if (spec.overlayOutput) { writer.Key("overlay_output"); writer.Uint(spec.overlayOutput); }
+        if (!spec.datasets.empty())
+        {
+            writer.Key("datasets"); writer.StartArray();
+            for (const auto &dataset : spec.datasets)
+            {
+                writer.StartObject();
+                writer.Key("parameter"); writer.Uint(dataset.parameter);
+                if (dataset.image) { writer.Key("image"); writeReference(writer, *dataset.image); }
+                if (dataset.maxRecords) { writer.Key("max_records"); writer.Int(dataset.maxRecords); }
+                writePorts(writer, "fields", dataset.fields, PortStage::Train);
+                writer.EndObject();
+            }
+            writer.EndArray();
+        }
         writer.Key("artifacts"); writer.StartArray();
         for (const auto &artifact : spec.artifacts)
         {
