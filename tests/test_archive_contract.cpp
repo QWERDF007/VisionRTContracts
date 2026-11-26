@@ -1,6 +1,7 @@
 #include "visionrt/contracts/TrainingArchive.h"
 #include "visionrt/contracts/ZipArchive.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -107,6 +108,44 @@ try
                 && loadedImages[2].pixels.type() == CV_32FC1
                 && loadedImages[2].pixels.at<float>(1, 3) == -7.5f,
             "32-bit float TIFF lossless round-trip");
+
+    // 4. TrainingArchive::readModel must only extract manifest and the requested model entry,
+    //    never decompressing unrelated image entries stored in the same archive.
+    {
+        const auto selectivePath = tempDir / u8"按需读取模型.zip";
+        const std::string manifest = R"({"format_version":1,"models":{"m":"models/m.bin"},"images":[]})";
+        const std::string marker = "UNRELATED_IMAGE_MARKER_BYTES_FOR_CORRUPTION_TEST";
+        std::vector<std::uint8_t> imagePayload(4096, 0x5A);
+        for (std::size_t i = 0; i < marker.size(); ++i)
+            imagePayload[i] = static_cast<std::uint8_t>(marker[i]);
+        ZipArchive::write(selectivePath, {
+            {"manifest.json", {manifest.begin(), manifest.end()}},
+            {"models/m.bin", modelBytes},
+            {"images/1_1.png", imagePayload},
+        });
+        // Corrupt the compressed stream of images/1_1.png so readAll() fails on CRC/inflate,
+        // while selective readModel() must still succeed without decompressing images/1_1.png.
+        std::vector<std::uint8_t> rawZip;
+        {
+            std::ifstream in(selectivePath, std::ios::binary | std::ios::ate);
+            rawZip.resize(static_cast<std::size_t>(in.tellg()));
+            in.seekg(0, std::ios::beg);
+            in.read(reinterpret_cast<char *>(rawZip.data()), static_cast<std::streamsize>(rawZip.size()));
+        }
+        const std::string imgEntry = "images/1_1.png";
+        const auto pos = std::search(rawZip.begin(), rawZip.end(), imgEntry.begin(), imgEntry.end());
+        require(pos != rawZip.end(), "local header for images/1_1.png must exist");
+        const std::size_t dataOffset = static_cast<std::size_t>(pos - rawZip.begin()) + imgEntry.size();
+        require(dataOffset + 8 < rawZip.size(), "compressed payload for images/1_1.png must exist");
+        rawZip[dataOffset + 4] ^= 0xFF;
+        {
+            std::ofstream out(selectivePath, std::ios::binary | std::ios::trunc);
+            out.write(reinterpret_cast<const char *>(rawZip.data()), static_cast<std::streamsize>(rawZip.size()));
+        }
+        rejects([&] { (void)ZipArchive::readAll(selectivePath); }, "corrupt image payload must fail readAll");
+        const auto selectiveModel = TrainingArchive::readModel(selectivePath, "m");
+        require(selectiveModel == modelBytes, "readModel must succeed without decompressing unrelated image entries");
+    }
 
     std::filesystem::remove_all(tempDir);
     std::cout << "ZipArchive and TrainingArchive contracts verified\n";

@@ -162,22 +162,19 @@ void TrainingArchive::write(const std::filesystem::path                         
 std::vector<std::uint8_t> TrainingArchive::readModel(const std::filesystem::path &path, std::string_view artifactId)
 {
     validateArtifactId(artifactId);
-    const auto entries  = ZipArchive::readAll(path);
-    const auto foundMan = entries.find(kManifestEntry);
-    if (foundMan == entries.end())
-        throw ContractError("训练资源包缺少 manifest.json");
-    const auto  root   = parseManifest(foundMan->second);
-    const auto &models = requiredField(root, "models");
+    const auto  manifestBytes = ZipArchive::readEntry(path, kManifestEntry);
+    const auto  root          = parseManifest(manifestBytes);
+    const auto &models        = requiredField(root, "models");
     if (models.kind != decljson::Kind::Object)
         throw ContractError("训练资源清单 models 必须是对象");
     const auto *entryNode = models.find(artifactId);
     if (!entryNode)
         throw ContractError("训练资源包不包含模型：" + std::string(artifactId));
     const auto entryPath = readString(*entryNode, "models." + std::string(artifactId));
-    const auto foundData = entries.find(entryPath);
-    if (foundData == entries.end() || foundData->second.empty())
+    auto       data      = ZipArchive::readEntry(path, entryPath);
+    if (data.empty())
         throw ContractError("训练资源包缺少模型数据：" + entryPath);
-    return foundData->second;
+    return data;
 }
 
 std::vector<TrainingArchiveImage> TrainingArchive::readImages(const std::filesystem::path &path)

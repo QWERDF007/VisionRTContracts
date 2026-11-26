@@ -46,22 +46,6 @@ void validateEntryName(std::string_view name)
     }
 }
 
-std::vector<std::uint8_t> readFileBytes(const std::filesystem::path &path)
-{
-    std::ifstream stream(path, std::ios::binary | std::ios::ate);
-    if (!stream)
-        throw ContractError("无法打开 ZIP 文件：" + path.string());
-    const auto size = stream.tellg();
-    if (size < 0)
-        throw ContractError("无法读取 ZIP 文件大小：" + path.string());
-    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size));
-    stream.seekg(0, std::ios::beg);
-    if (!bytes.empty()
-        && !stream.read(reinterpret_cast<char *>(bytes.data()), static_cast<std::streamsize>(bytes.size())))
-        throw ContractError("读取 ZIP 文件失败：" + path.string());
-    return bytes;
-}
-
 std::filesystem::path temporarySiblingPath(const std::filesystem::path &target)
 {
     static std::atomic<std::uint64_t> counter{0};
@@ -126,8 +110,21 @@ void writeAtomicBytes(const std::filesystem::path &target, const void *data, std
 
 struct ReaderGuard
 {
+    std::ifstream  stream;
     mz_zip_archive archive{};
     bool           open = false;
+
+    static size_t readCallback(void *opaque, mz_uint64 offset, void *buffer, size_t count)
+    {
+        auto &in = *static_cast<std::ifstream *>(opaque);
+        in.clear();
+        in.seekg(static_cast<std::streamoff>(offset), std::ios::beg);
+        if (!in)
+            return 0;
+        in.read(static_cast<char *>(buffer), static_cast<std::streamsize>(count));
+        const auto got = in.gcount();
+        return got > 0 ? static_cast<size_t>(got) : 0;
+    }
 
     ~ReaderGuard()
     {
@@ -148,9 +145,17 @@ struct WriterGuard
     }
 };
 
-void openReader(ReaderGuard &guard, const std::vector<std::uint8_t> &bytes, const std::filesystem::path &path)
+void openReader(ReaderGuard &guard, const std::filesystem::path &path)
 {
-    if (bytes.empty() || !mz_zip_reader_init_mem(&guard.archive, bytes.data(), bytes.size(), 0))
+    guard.stream.open(path, std::ios::binary | std::ios::ate);
+    if (!guard.stream)
+        throw ContractError("无法打开 ZIP 文件：" + path.string());
+    const auto size = guard.stream.tellg();
+    if (size <= 0)
+        throw ContractError("ZIP 归档无效或已损坏：" + path.string());
+    guard.archive.m_pRead      = &ReaderGuard::readCallback;
+    guard.archive.m_pIO_opaque = &guard.stream;
+    if (!mz_zip_reader_init(&guard.archive, static_cast<mz_uint64>(size), 0))
         throw ContractError("ZIP 归档无效或已损坏：" + path.string());
     guard.open = true;
 }
@@ -171,9 +176,8 @@ std::vector<std::uint8_t> extractEntry(mz_zip_archive &archive, mz_uint index, s
 
 std::map<std::string, std::vector<std::uint8_t>> ZipArchive::readAll(const std::filesystem::path &path)
 {
-    const auto  bytes = readFileBytes(path);
     ReaderGuard guard;
-    openReader(guard, bytes, path);
+    openReader(guard, path);
     const mz_uint count = mz_zip_reader_get_num_files(&guard.archive);
 
     std::map<std::string, std::vector<std::uint8_t>> result;
@@ -196,9 +200,8 @@ std::map<std::string, std::vector<std::uint8_t>> ZipArchive::readAll(const std::
 std::vector<std::uint8_t> ZipArchive::readEntry(const std::filesystem::path &path, std::string_view entryName)
 {
     validateEntryName(entryName);
-    const auto  bytes = readFileBytes(path);
     ReaderGuard guard;
-    openReader(guard, bytes, path);
+    openReader(guard, path);
     const mz_uint count = mz_zip_reader_get_num_files(&guard.archive);
 
     std::set<std::string> seen;
